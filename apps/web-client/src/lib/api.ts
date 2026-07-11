@@ -42,12 +42,10 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
 // ─── FIX #5: объект api с нужными методами ───────────────
 export const api = {
   auth: {
-    login:   (email: string, password: string) =>
+    login:  (email: string, password: string) =>
       req('/auth/login', { method:'POST', body:JSON.stringify({ email, password }) }),
-    refresh: (refresh_token: string) =>
-      req('/auth/refresh', { method:'POST', body:JSON.stringify({ refresh_token }) }),
-    logout:  (user_id?: string) =>
-      req('/auth/logout', { method:'POST', body:JSON.stringify({ user_id }) }),
+    logout: () =>
+      req('/auth/logout', { method:'POST' }),
   },
 
   dashboard: {
@@ -84,12 +82,18 @@ export const api = {
   },
 
   counterparties: {
-    list: (org_id?: string) =>
-      req(`/counterparties${org_id ? `?org_id=${org_id}` : ''}`),
+    list: () => req('/counterparties'),
+    create: (body: { name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string }) =>
+      req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
+    update: (id: string, body: Record<string, any>) =>
+      req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
   },
 
   users: {
     me: () => req('/users/me'),
+    list: () => req('/users'),
+    changePassword: (current_password: string, new_password: string) =>
+      req('/users/me/password', { method:'PATCH', body:JSON.stringify({ current_password, new_password }) }),
   },
 
   admin: {
@@ -133,6 +137,10 @@ export const STATUS_COLOR: Record<string, string> = {
   DISPUTED:        'bg-red-50    text-red-700    border border-red-200',
   ARCHIVED:        'bg-gray-100  text-gray-500   border border-gray-200',
   WRITTEN_OFF:     'bg-gray-100  text-gray-500   border border-gray-200',
+};
+
+export const ROLE_LABEL: Record<string, string> = {
+  owner: 'Owner', accountant: 'Бухгалтер', vendor_admin: 'Vendor Admin', readonly: 'Read only',
 };
 
 export const STATUS_ICON: Record<string, string> = {

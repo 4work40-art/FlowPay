@@ -41,8 +41,9 @@ export default function LoginPage() {
           <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>
         )}
 
-        <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Email</label>
+        <label htmlFor="login-email" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Email</label>
         <input
+          id="login-email"
           type="email"
           required
           value={email}
@@ -50,8 +51,9 @@ export default function LoginPage() {
           style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
         />
 
-        <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль</label>
+        <label htmlFor="login-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль</label>
         <input
+          id="login-password"
           type="password"
           required
           value={password}

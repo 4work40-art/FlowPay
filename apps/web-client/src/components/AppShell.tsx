@@ -1,19 +1,18 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, ROLE_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 
 const NAV = [
-  { href: '/dashboard', icon: '📊', label: 'Dashboard' },
-  { href: '/invoices',  icon: '📋', label: 'Счета'     },
-  { href: '/payments',  icon: '💳', label: 'Платежи'   },
-  { href: '/analytics', icon: '📈', label: 'Аналитика' },
+  { href: '/dashboard',      icon: '📊', label: 'Dashboard'    },
+  { href: '/invoices',       icon: '📋', label: 'Счета'        },
+  { href: '/payments',       icon: '💳', label: 'Платежи'      },
+  { href: '/counterparties', icon: '🤝', label: 'Контрагенты'  },
+  { href: '/analytics',      icon: '📈', label: 'Аналитика'    },
+  { href: '/settings',       icon: '⚙️', label: 'Настройки'    },
 ];
-
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Owner', accountant: 'Бухгалтер', vendor_admin: 'Vendor Admin', readonly: 'Read only',
-};
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -63,25 +62,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="sidebar-nav">
           {NAV.map(n => (
-            <a key={n.href} href={n.href} className="nav-item">
+            <Link key={n.href} href={n.href} className={`nav-item${pathname.startsWith(n.href) ? ' active' : ''}`}>
               <span>{n.icon}</span>
               <span>{n.label}</span>
-            </a>
+            </Link>
           ))}
           {user?.is_platform_admin && (
-            <a href="/admin" className="nav-item" style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
+            <Link href="/admin" className={`nav-item${pathname.startsWith('/admin') ? ' active' : ''}`} style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
               <span>👑</span>
               <span>Кабинет создателя</span>
-            </a>
+            </Link>
           )}
         </nav>
         <div className="sidebar-footer">
-          <div className="avatar">{initials}</div>
-          <div style={{ flex: 1 }}>
-            <div className="avatar-name">{user?.name ?? '—'}</div>
-            <div className="avatar-role">{ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {user?.plan}</div>
-          </div>
-          <button className="btn btn-sm" onClick={logout} title="Выйти">⏻</button>
+          <Link href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, color: 'inherit', textDecoration: 'none' }}>
+            <div className="avatar">{initials}</div>
+            <div style={{ flex: 1 }}>
+              <div className="avatar-name">{user?.name ?? '—'}</div>
+              <div className="avatar-role">{ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {user?.plan}</div>
+            </div>
+          </Link>
+          <button className="btn btn-sm" onClick={logout} title="Выйти" aria-label="Выйти">⏻</button>
         </div>
       </aside>
 

@@ -163,6 +163,15 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
 }
 .card-body { padding: 16px; }
 
+/* ─── FORMS ───────────────────────────────────── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.form-group.full { grid-column: 1 / -1; }
+.field-label { font-size: 12px; font-weight: 500; color: var(--text2); }
+.field-hint { font-size: 11px; color: var(--text2); }
+.field-error { font-size: 11px; color: var(--red); }
+.form-actions { display: flex; gap: 8px; margin-top: 6px; }
+
 /* ─── METRIC CARDS ───────────────────────────── */
 .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; margin-bottom: 20px; }
 .metric-card {

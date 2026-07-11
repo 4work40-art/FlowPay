@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL } from '@/lib/api';
+import { getStoredUser } from '@/lib/auth';
 
 type Invoice = {
   id: string;
@@ -67,10 +68,10 @@ export default function DashboardPage() {
     return (
       <div>
         <div className="error-box">
-          <strong>Ошибка соединения:</strong> {error}
+          <strong>Не удалось загрузить данные:</strong> {error}
           <br />
           <span style={{ fontSize: 12, opacity: .8 }}>
-            Убедись что docker compose up -d выполнен и API отвечает на http://localhost:3001/health
+            Проверьте подключение к интернету и попробуйте ещё раз.
           </span>
           <br />
           <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={load}>
@@ -81,13 +82,15 @@ export default function DashboardPage() {
     );
   }
 
+  const user = getStoredUser();
+
   return (
     <div>
       {/* ─── Заголовок ───────────────────── */}
       <div className="page-header">
         <div>
           <div className="page-title">Dashboard</div>
-          <div className="page-sub">ООО СтройМонтаж · Owner · Free</div>
+          <div className="page-sub">{user?.org_name ?? '—'} · {ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {user?.plan}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="view-toggle">
@@ -266,7 +269,7 @@ export default function DashboardPage() {
                                 Подробнее →
                               </a>
                               <a
-                                href={`/payments?invoice=${inv.id}`}
+                                href={`/payments/new?invoice=${inv.id}`}
                                 className="btn btn-green btn-sm"
                                 onClick={e => e.stopPropagation()}>
                                 + Платёж
@@ -277,9 +280,16 @@ export default function DashboardPage() {
                       )}
                     </>
                   ))}
-                  {!displayed.length && (
+                  {!displayed.length && !invoices.length && (
                     <tr>
-                      <td colSpan={4} className="empty-state">Счетов нет</td>
+                      <td colSpan={4} className="empty-state">
+                        Счетов пока нет. <a href="/invoices/new">Загрузить первый счёт →</a>
+                      </td>
+                    </tr>
+                  )}
+                  {!displayed.length && !!invoices.length && (
+                    <tr>
+                      <td colSpan={4} className="empty-state">Нет счетов с таким статусом</td>
                     </tr>
                   )}
                 </tbody>

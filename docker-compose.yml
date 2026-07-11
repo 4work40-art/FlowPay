@@ -47,7 +47,7 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://sk_user:${POSTGRES_PASSWORD:-sk_secret_local}@postgres:5432/schyot_kontrol
       REDIS_URL: redis://:${REDIS_PASSWORD:-sk_redis_local}@redis:6379
-      JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_32chars_min}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example (openssl rand -hex 32)}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     depends_on:
       postgres:
