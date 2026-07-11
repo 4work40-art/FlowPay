@@ -51,6 +51,20 @@ http://localhost:8080
 - Пароль: `sk_secret_local`
 - База: `schyot_kontrol`
 
+## Бэкапы (боевой сервер)
+
+Ежедневно в 03:00 по крону выполняется `backup.sh` — дамп БД в `backups/`, хранятся последние 14 дней.
+
+Восстановить из бэкапа:
+```bash
+cd /opt/FlowPay
+gunzip -c backups/schyot_kontrol_ФАЙЛ.sql.gz | docker compose exec -T postgres psql -U sk_user schyot_kontrol
+```
+
+## Авторизация
+
+Вход по email/паролю выдаёт подписанный JWT (24 часа). Все API-эндпоинты, кроме `/health` и `/auth/login`, требуют заголовок `Authorization: Bearer <token>`. Logout инвалидирует токен через Redis.
+
 ## Troubleshooting
 
 **Проблема: нет стилей** → `RESTART.bat`

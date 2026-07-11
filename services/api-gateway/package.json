@@ -6,8 +6,10 @@
     "dev":   "node src/server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "cors":    "^2.8.5",
-    "pg":      "^8.11.5"
+    "express":        "^4.19.2",
+    "cors":           "^2.8.5",
+    "pg":             "^8.11.5",
+    "jsonwebtoken":   "^9.0.3",
+    "ioredis":        "^5.11.1"
   }
 }

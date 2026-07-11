@@ -2,17 +2,35 @@
 // NEXT_PUBLIC_API_URL устанавливается в docker-compose как http://localhost:3001/api/v1
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('sk_token');
+}
+
 async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
-  const url = `${BASE}${path}`;
+  const url   = `${BASE}${path}`;
+  const token = getStoredToken();
   let res: Response;
   try {
     res = await fetch(url, {
       ...opts,
-      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...opts.headers,
+      },
     });
   } catch (e: any) {
     throw new Error(`Сеть недоступна (${url}): ${e.message}`);
   }
+
+  if (res.status === 401 && typeof window !== 'undefined' && !path.startsWith('/auth/')) {
+    localStorage.removeItem('sk_token');
+    localStorage.removeItem('sk_user');
+    window.location.href = '/login';
+    throw new Error('Сессия истекла, войдите заново');
+  }
+
   const data = await res.json();
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;

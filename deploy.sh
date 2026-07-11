@@ -4,7 +4,8 @@ set -e
 SERVER_IP="${1:?Usage: deploy.sh <SERVER_IP>}"
 
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg git ufw
+apt-get install -y ca-certificates curl gnupg git ufw cron
+systemctl enable --now cron
 
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -34,6 +35,19 @@ ENVEOF
 fi
 
 docker compose up -d --build
+
+echo "Waiting for Postgres..."
+for i in $(seq 1 30); do
+  docker compose exec -T postgres pg_isready -U sk_user -d schyot_kontrol >/dev/null 2>&1 && break
+  sleep 2
+done
+
+# Разово чистим демо-счета/платежи/контрагентов, засеянные первым запуском (безопасно перезапускать)
+docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/cleanup_demo_data.sql || true
+
+chmod +x backup.sh
+CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"
+( crontab -l 2>/dev/null | grep -vF 'FlowPay/backup.sh' ; echo "$CRON_LINE" ) | crontab -
 
 ufw allow 22/tcp
 ufw allow 3000/tcp

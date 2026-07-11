@@ -1,6 +1,9 @@
-const express = require('express');
-const cors    = require('cors');
-const { Pool } = require('pg');
+const express    = require('express');
+const cors       = require('cors');
+const jwt        = require('jsonwebtoken');
+const { randomUUID } = require('crypto');
+const { Pool }   = require('pg');
+const Redis      = require('ioredis');
 
 // ─── App ─────────────────────────────────────────────────
 const app  = express();
@@ -17,9 +20,50 @@ const pool = new Pool({
 
 pool.on('error', (e) => console.warn('[PG error]', e.message));
 
-// ─── Helpers ─────────────────────────────────────────────
-const ORG  = '00000000-0000-0000-0000-000000000001';
-const USER = '00000000-0000-0000-0000-000000000002';
+// ─── Redis (token revocation) ─────────────────────────────
+const redis = new Redis(
+  process.env.REDIS_URL || 'redis://:sk_redis_local@localhost:6379',
+  { lazyConnect: true, maxRetriesPerRequest: 2 }
+);
+redis.on('error', (e) => console.warn('[Redis error]', e.message));
+redis.connect().catch((e) => console.warn('[Redis connect]', e.message));
+
+// ─── Auth helpers ──────────────────────────────────────────
+const JWT_SECRET  = process.env.JWT_SECRET || 'local_dev_secret_key_32chars_min';
+const TOKEN_TTL_S = 86400; // 24h
+
+function signToken(user) {
+  const jti = randomUUID();
+  const token = jwt.sign(
+    { sub: user.id, org: user.org_id, role: user.role, email: user.email, jti },
+    JWT_SECRET,
+    { expiresIn: TOKEN_TTL_S }
+  );
+  return { token, jti };
+}
+
+async function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return err(res, 401, 'Missing bearer token', 'UNAUTHORIZED');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return err(res, 401, 'Invalid or expired token', 'UNAUTHORIZED');
+  }
+
+  try {
+    const revoked = await redis.get(`revoked:${payload.jti}`);
+    if (revoked) return err(res, 401, 'Token has been revoked', 'UNAUTHORIZED');
+  } catch (e) {
+    console.warn('[auth] revocation check skipped:', e.message);
+  }
+
+  req.user = { id: payload.sub, org_id: payload.org, role: payload.role, email: payload.email, jti: payload.jti };
+  next();
+}
 
 function fmt(kopecks) {
   const n = Math.round(Number(kopecks || 0)) / 100;
@@ -76,12 +120,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
       return err(res, 401, 'Invalid email or password', 'UNAUTHORIZED');
 
     const u = rows[0];
-
-    // Простой токен (base64) — достаточно для локального тестирования
-    const token = Buffer.from(JSON.stringify({
-      sub: u.id, org: u.org_id, role: u.role,
-      email: u.email, exp: Date.now() + 86400000
-    })).toString('base64');
+    const { token, jti } = signToken(u);
 
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [u.id]);
     await audit(u.org_id, u.id, 'auth.login', 'user', u.id, null, { email: u.email });
@@ -89,7 +128,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
     return ok(res, {
       access_token: token,
       refresh_token: token,
-      expires_in: 86400,
+      expires_in: TOKEN_TTL_S,
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: u.org_id, org_name: u.org_name, plan: u.plan,
@@ -102,13 +141,18 @@ app.post('/api/v1/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/v1/auth/logout', (req, res) => {
+app.post('/api/v1/auth/logout', authMiddleware, async (req, res) => {
+  try {
+    await redis.set(`revoked:${req.user.jti}`, '1', 'EX', TOKEN_TTL_S);
+  } catch (e) {
+    console.warn('[logout] revoke failed:', e.message);
+  }
   return ok(res, { message: 'Logged out' });
 });
 
 // ─── Dashboard ───────────────────────────────────────────
-app.get('/api/v1/dashboard', async (req, res) => {
-  const orgId = req.query.org_id || ORG;
+app.get('/api/v1/dashboard', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
   try {
     const { rows } = await pool.query(`
       SELECT
@@ -155,8 +199,8 @@ app.get('/api/v1/dashboard', async (req, res) => {
 });
 
 // ─── Invoices ────────────────────────────────────────────
-app.get('/api/v1/invoices', async (req, res) => {
-  const orgId  = req.query.org_id || ORG;
+app.get('/api/v1/invoices', authMiddleware, async (req, res) => {
+  const orgId  = req.user.org_id;
   const status = req.query.status;
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
@@ -194,7 +238,7 @@ app.get('/api/v1/invoices', async (req, res) => {
   }
 });
 
-app.get('/api/v1/invoices/:id', async (req, res) => {
+app.get('/api/v1/invoices/:id', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT i.*, c.name AS counterparty_name,
@@ -204,7 +248,8 @@ app.get('/api/v1/invoices/:id', async (req, res) => {
       WHERE i.id = $1
     `, [req.params.id]);
 
-    if (!rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+    if (!rows.length || rows[0].org_id !== req.user.org_id)
+      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
 
     const pmts = await pool.query(
       'SELECT * FROM payments WHERE invoice_id = $1 ORDER BY created_at DESC',
@@ -225,21 +270,21 @@ app.get('/api/v1/invoices/:id', async (req, res) => {
   }
 });
 
-app.post('/api/v1/invoices', async (req, res) => {
-  const { amount_kopecks, number, counterparty_id, due_date, notes, org_id } = req.body || {};
+app.post('/api/v1/invoices', authMiddleware, async (req, res) => {
+  const { amount_kopecks, number, counterparty_id, due_date, notes } = req.body || {};
   if (!amount_kopecks || amount_kopecks <= 0)
     return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
     return err(res, 400, 'amount_kopecks must be integer (kopecks)', 'VALIDATION_ERROR');
 
   try {
-    const orgId = org_id || ORG;
+    const orgId = req.user.org_id;
     const { rows } = await pool.query(`
       INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, notes, status, created_by)
       VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7) RETURNING *
-    `, [orgId, counterparty_id || null, number || null, amount_kopecks, due_date || null, notes || null, USER]);
+    `, [orgId, counterparty_id || null, number || null, amount_kopecks, due_date || null, notes || null, req.user.id]);
 
-    await audit(orgId, USER, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
+    await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);
   } catch (e) {
     console.error('[invoice create]', e.message);
@@ -247,11 +292,12 @@ app.post('/api/v1/invoices', async (req, res) => {
   }
 });
 
-app.patch('/api/v1/invoices/:id/state', async (req, res) => {
+app.patch('/api/v1/invoices/:id/state', authMiddleware, async (req, res) => {
   const { transition, reason } = req.body || {};
   try {
     const { rows } = await pool.query('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
-    if (!rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+    if (!rows.length || rows[0].org_id !== req.user.org_id)
+      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
     const inv = rows[0];
 
     const TRANSITIONS = {
@@ -269,7 +315,7 @@ app.patch('/api/v1/invoices/:id/state', async (req, res) => {
       return err(res, 400, `Transition ${transition} not allowed from ${inv.status}`, 'INVOICE_STATE_INVALID');
 
     await pool.query('UPDATE invoices SET status=$1, updated_at=NOW(), version=version+1 WHERE id=$2', [t.to, req.params.id]);
-    await audit(inv.org_id, USER, 'invoice.state_changed', 'invoice', req.params.id,
+    await audit(inv.org_id, req.user.id, 'invoice.state_changed', 'invoice', req.params.id,
       { status: inv.status }, { status: t.to, reason });
 
     return ok(res, { id: req.params.id, previous_state: inv.status, new_state: t.to, transitioned_at: new Date().toISOString() });
@@ -280,8 +326,8 @@ app.patch('/api/v1/invoices/:id/state', async (req, res) => {
 });
 
 // ─── Payments ────────────────────────────────────────────
-app.get('/api/v1/payments', async (req, res) => {
-  const orgId = req.query.org_id || ORG;
+app.get('/api/v1/payments', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
   try {
     const { rows } = await pool.query(`
       SELECT p.*, i.number AS invoice_number, c.name AS counterparty_name
@@ -297,8 +343,8 @@ app.get('/api/v1/payments', async (req, res) => {
   }
 });
 
-app.post('/api/v1/payments', async (req, res) => {
-  const { invoice_id, amount_kopecks, method, reference, payment_date, org_id } = req.body || {};
+app.post('/api/v1/payments', authMiddleware, async (req, res) => {
+  const { invoice_id, amount_kopecks, method, reference, payment_date } = req.body || {};
   if (!invoice_id)      return err(res, 400, 'invoice_id required', 'VALIDATION_ERROR');
   if (!amount_kopecks || amount_kopecks <= 0)
     return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
@@ -307,7 +353,8 @@ app.post('/api/v1/payments', async (req, res) => {
 
   try {
     const invRows = await pool.query('SELECT * FROM invoices WHERE id=$1', [invoice_id]);
-    if (!invRows.rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+    if (!invRows.rows.length || invRows.rows[0].org_id !== req.user.org_id)
+      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
     const inv = invRows.rows[0];
 
     const remaining = inv.amount_kopecks - inv.paid_kopecks;
@@ -317,9 +364,9 @@ app.post('/api/v1/payments', async (req, res) => {
     const { rows } = await pool.query(`
       INSERT INTO payments(invoice_id, org_id, amount_kopecks, method, reference, payment_date, created_by)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *
-    `, [invoice_id, org_id || inv.org_id, amount_kopecks,
+    `, [invoice_id, inv.org_id, amount_kopecks,
         method || 'bank_transfer', reference || null,
-        payment_date || new Date().toISOString().slice(0,10), USER]);
+        payment_date || new Date().toISOString().slice(0,10), req.user.id]);
 
     const newPaid   = inv.paid_kopecks + amount_kopecks;
     const newStatus = newPaid >= inv.amount_kopecks ? 'PAID' : 'PARTIALLY_PAID';
@@ -327,7 +374,7 @@ app.post('/api/v1/payments', async (req, res) => {
     await pool.query('UPDATE invoices SET paid_kopecks=$1, status=$2, updated_at=NOW() WHERE id=$3',
       [newPaid, newStatus, invoice_id]);
 
-    await audit(inv.org_id, USER, 'payment.created', 'payment', rows[0].id,
+    await audit(inv.org_id, req.user.id, 'payment.created', 'payment', rows[0].id,
       { paid_kopecks: inv.paid_kopecks, status: inv.status },
       { paid_kopecks: newPaid, status: newStatus });
 
@@ -346,8 +393,8 @@ app.post('/api/v1/payments', async (req, res) => {
 });
 
 // ─── Counterparties ───────────────────────────────────────
-app.get('/api/v1/counterparties', async (req, res) => {
-  const orgId = req.query.org_id || ORG;
+app.get('/api/v1/counterparties', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
   try {
     const { rows } = await pool.query(`
       SELECT c.*,
@@ -367,13 +414,13 @@ app.get('/api/v1/counterparties', async (req, res) => {
 });
 
 // ─── Users ───────────────────────────────────────────────
-app.get('/api/v1/users/me', async (req, res) => {
+app.get('/api/v1/users/me', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.*, o.name AS org_name, o.plan
        FROM users u
        LEFT JOIN organizations o ON u.org_id = o.id
-       WHERE u.id = $1`, [USER]
+       WHERE u.id = $1`, [req.user.id]
     );
     if (!rows.length) return err(res, 404, 'User not found', 'NOT_FOUND');
     const u = rows[0];
@@ -396,8 +443,8 @@ app.get('/api/v1/users/me', async (req, res) => {
 });
 
 // ─── Audit ───────────────────────────────────────────────
-app.get('/api/v1/audit/logs', async (req, res) => {
-  const orgId  = req.query.org_id || ORG;
+app.get('/api/v1/audit/logs', authMiddleware, async (req, res) => {
+  const orgId  = req.user.org_id;
   const action = req.query.action;
   const limit  = Math.min(100, parseInt(req.query.limit) || 30);
 
