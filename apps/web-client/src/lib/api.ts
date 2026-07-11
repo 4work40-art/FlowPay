@@ -1,0 +1,125 @@
+// ─── FIX #6 #7: прямой URL к API, без прокси/rewrite ───────
+// NEXT_PUBLIC_API_URL устанавливается в docker-compose как http://localhost:3001/api/v1
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
+
+async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
+  const url = `${BASE}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+    });
+  } catch (e: any) {
+    throw new Error(`Сеть недоступна (${url}): ${e.message}`);
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// ─── FIX #5: объект api с нужными методами ───────────────
+export const api = {
+  auth: {
+    login:   (email: string, password: string) =>
+      req('/auth/login', { method:'POST', body:JSON.stringify({ email, password }) }),
+    refresh: (refresh_token: string) =>
+      req('/auth/refresh', { method:'POST', body:JSON.stringify({ refresh_token }) }),
+    logout:  (user_id?: string) =>
+      req('/auth/logout', { method:'POST', body:JSON.stringify({ user_id }) }),
+  },
+
+  dashboard: {
+    summary: (org_id?: string) =>
+      req(`/dashboard${org_id ? `?org_id=${org_id}` : ''}`),
+  },
+
+  invoices: {
+    list: (params: Record<string, string> = {}) =>
+      req(`/invoices?${new URLSearchParams(params)}`),
+    get: (id: string) =>
+      req(`/invoices/${id}`),
+    create: (body: {
+      amount_kopecks: number;
+      number?: string;
+      counterparty_id?: string;
+      due_date?: string;
+      notes?: string;
+    }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
+    transition: (id: string, transition: string, reason?: string) =>
+      req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
+  },
+
+  payments: {
+    list: (params: Record<string, string> = {}) =>
+      req(`/payments?${new URLSearchParams(params)}`),
+    create: (body: {
+      invoice_id: string;
+      amount_kopecks: number;
+      method?: string;
+      reference?: string;
+      payment_date?: string;
+    }) => req('/payments', { method:'POST', body:JSON.stringify(body) }),
+  },
+
+  counterparties: {
+    list: (org_id?: string) =>
+      req(`/counterparties${org_id ? `?org_id=${org_id}` : ''}`),
+  },
+
+  users: {
+    me: () => req('/users/me'),
+  },
+
+  audit: {
+    logs: (params: Record<string, string> = {}) =>
+      req(`/audit/logs?${new URLSearchParams(params)}`),
+  },
+};
+
+// ─── Форматирование суммы (P5: разделители) ───────────────
+export function fmt(kopecks: number | string | null | undefined): string {
+  const n = Math.round(Number(kopecks ?? 0)) / 100;
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+}
+
+// ─── Статусы счетов ────────────────────────────────────────
+export const STATUS_LABEL: Record<string, string> = {
+  CREATED:         'Создан',
+  UNDER_CONTROL:   'На контроле',
+  PAYMENT_PENDING: 'Ожидает',
+  PARTIALLY_PAID:  'Частично',
+  PAID:            'Оплачен',
+  OVERDUE:         'Просрочен',
+  DISPUTED:        'Спор',
+  ARCHIVED:        'Архив',
+  WRITTEN_OFF:     'Списан',
+};
+
+// P5: оранжевый для просрочки, НЕ красный
+export const STATUS_COLOR: Record<string, string> = {
+  PAID:            'bg-emerald-50 text-emerald-800 border border-emerald-200',
+  PARTIALLY_PAID:  'bg-blue-50   text-blue-800   border border-blue-200',
+  OVERDUE:         'bg-amber-50  text-amber-800  border border-amber-200',
+  UNDER_CONTROL:   'bg-purple-50 text-purple-800 border border-purple-200',
+  PAYMENT_PENDING: 'bg-blue-50   text-blue-700   border border-blue-200',
+  CREATED:         'bg-gray-100  text-gray-700   border border-gray-200',
+  DISPUTED:        'bg-red-50    text-red-700    border border-red-200',
+  ARCHIVED:        'bg-gray-100  text-gray-500   border border-gray-200',
+  WRITTEN_OFF:     'bg-gray-100  text-gray-500   border border-gray-200',
+};
+
+export const STATUS_ICON: Record<string, string> = {
+  PAID:            '✓',
+  PARTIALLY_PAID:  '%',
+  OVERDUE:         '⏰',
+  UNDER_CONTROL:   '👁',
+  PAYMENT_PENDING: '⏳',
+  CREATED:         '📄',
+  DISPUTED:        '⚠',
+  ARCHIVED:        '📦',
+  WRITTEN_OFF:     '✗',
+};

@@ -1,0 +1,450 @@
+const express = require('express');
+const cors    = require('cors');
+const { Pool } = require('pg');
+
+// ─── App ─────────────────────────────────────────────────
+const app  = express();
+const port = process.env.PORT || 3001;
+
+app.use(cors({ origin: '*' }));
+app.use(express.json());
+
+// ─── DB ──────────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL ||
+    'postgresql://sk_user:sk_secret_local@localhost:5432/schyot_kontrol',
+});
+
+pool.on('error', (e) => console.warn('[PG error]', e.message));
+
+// ─── Helpers ─────────────────────────────────────────────
+const ORG  = '00000000-0000-0000-0000-000000000001';
+const USER = '00000000-0000-0000-0000-000000000002';
+
+function fmt(kopecks) {
+  const n = Math.round(Number(kopecks || 0)) / 100;
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
+}
+
+function ok(res, data, status = 200) {
+  return res.status(status).json({ success: true, data });
+}
+
+function err(res, status, message, code) {
+  return res.status(status).json({ success: false, error: { code, message } });
+}
+
+async function audit(orgId, userId, action, resource, resourceId, before, after) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_logs(org_id,user_id,action,resource,resource_id,before_state,after_state,status)
+       VALUES($1,$2,$3,$4,$5,$6,$7,'success')`,
+      [orgId, userId, action, resource, resourceId || null,
+       before ? JSON.stringify(before) : null,
+       after  ? JSON.stringify(after)  : null]
+    );
+  } catch (e) {
+    console.warn('[audit]', e.message);
+  }
+}
+
+// ─── Health ──────────────────────────────────────────────
+app.get('/health', async (req, res) => {
+  let db = 'ok';
+  try { await pool.query('SELECT 1'); } catch { db = 'error'; }
+  res.json({ status: db === 'ok' ? 'ok' : 'degraded', db, ts: new Date().toISOString() });
+});
+
+// ─── Auth ─────────────────────────────────────────────────
+app.post('/api/v1/auth/login', async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password)
+    return err(res, 400, 'Email and password required', 'VALIDATION_ERROR');
+
+  try {
+    // Используем pgcrypto для проверки пароля — без bcrypt npm модуля
+    const { rows } = await pool.query(
+      `SELECT u.*, o.name AS org_name, o.plan
+       FROM users u
+       LEFT JOIN organizations o ON u.org_id = o.id
+       WHERE u.email = $1 AND u.is_active = true
+         AND u.password_hash = crypt($2, u.password_hash)`,
+      [email.toLowerCase().trim(), password]
+    );
+
+    if (!rows.length)
+      return err(res, 401, 'Invalid email or password', 'UNAUTHORIZED');
+
+    const u = rows[0];
+
+    // Простой токен (base64) — достаточно для локального тестирования
+    const token = Buffer.from(JSON.stringify({
+      sub: u.id, org: u.org_id, role: u.role,
+      email: u.email, exp: Date.now() + 86400000
+    })).toString('base64');
+
+    await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [u.id]);
+    await audit(u.org_id, u.id, 'auth.login', 'user', u.id, null, { email: u.email });
+
+    return ok(res, {
+      access_token: token,
+      refresh_token: token,
+      expires_in: 86400,
+      user: {
+        id: u.id, email: u.email, name: u.name, role: u.role,
+        org_id: u.org_id, org_name: u.org_name, plan: u.plan,
+        trust_score: u.trust_score
+      }
+    });
+  } catch (e) {
+    console.error('[login]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+app.post('/api/v1/auth/logout', (req, res) => {
+  return ok(res, { message: 'Logged out' });
+});
+
+// ─── Dashboard ───────────────────────────────────────────
+app.get('/api/v1/dashboard', async (req, res) => {
+  const orgId = req.query.org_id || ORG;
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(SUM(amount_kopecks - paid_kopecks)
+          FILTER (WHERE status NOT IN ('PAID','ARCHIVED','WRITTEN_OFF')), 0)  AS total_debt,
+        COALESCE(SUM(amount_kopecks - paid_kopecks)
+          FILTER (WHERE status = 'OVERDUE'), 0)                              AS overdue_debt,
+        COALESCE(COUNT(*)
+          FILTER (WHERE status = 'OVERDUE'), 0)                              AS overdue_count,
+        COALESCE(SUM(amount_kopecks - paid_kopecks)
+          FILTER (WHERE status = 'PARTIALLY_PAID'), 0)                       AS partial_debt,
+        COALESCE(SUM(paid_kopecks)
+          FILTER (WHERE updated_at >= DATE_TRUNC('month', NOW())), 0)        AS paid_month,
+        COUNT(*) AS total_invoices
+      FROM invoices WHERE org_id = $1
+    `, [orgId]);
+
+    const due7 = await pool.query(`
+      SELECT COALESCE(SUM(amount_kopecks - paid_kopecks), 0) AS v, COUNT(*) AS c
+      FROM invoices
+      WHERE org_id = $1
+        AND status IN ('UNDER_CONTROL','PAYMENT_PENDING')
+        AND due_date BETWEEN NOW() AND NOW() + INTERVAL '7 days'
+    `, [orgId]);
+
+    const uRows = await pool.query(
+      `SELECT trust_score FROM users WHERE org_id = $1 AND role = 'owner' LIMIT 1`, [orgId]
+    );
+
+    const s = rows[0];
+    return ok(res, {
+      total_debt:      { kopecks: +s.total_debt,   display: fmt(s.total_debt) },
+      overdue_debt:    { kopecks: +s.overdue_debt,  display: fmt(s.overdue_debt), count: +s.overdue_count },
+      partial_debt:    { kopecks: +s.partial_debt,  display: fmt(s.partial_debt) },
+      paid_this_month: { kopecks: +s.paid_month,    display: fmt(s.paid_month) },
+      due_7_days:      { kopecks: +due7.rows[0].v,  display: fmt(due7.rows[0].v), count: +due7.rows[0].c },
+      total_invoices:  +s.total_invoices,
+      trust_score:     uRows.rows[0]?.trust_score || 50,
+    });
+  } catch (e) {
+    console.error('[dashboard]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── Invoices ────────────────────────────────────────────
+app.get('/api/v1/invoices', async (req, res) => {
+  const orgId  = req.query.org_id || ORG;
+  const status = req.query.status;
+  const page   = Math.max(1, parseInt(req.query.page) || 1);
+  const limit  = Math.min(100, parseInt(req.query.limit) || 20);
+  const offset = (page - 1) * limit;
+
+  try {
+    const params = [orgId];
+    let where = 'WHERE i.org_id = $1';
+    if (status) { params.push(status.toUpperCase()); where += ` AND i.status = $${params.length}`; }
+
+    const { rows } = await pool.query(`
+      SELECT i.*, c.name AS counterparty_name,
+        (i.amount_kopecks - i.paid_kopecks) AS remaining_kopecks
+      FROM invoices i
+      LEFT JOIN counterparties c ON i.counterparty_id = c.id
+      ${where}
+      ORDER BY i.created_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, [...params, limit, offset]);
+
+    const cnt = await pool.query(`SELECT COUNT(*) FROM invoices i ${where}`, params);
+
+    return ok(res, {
+      items: rows.map(r => ({
+        ...r,
+        amount_display:    fmt(r.amount_kopecks),
+        paid_display:      fmt(r.paid_kopecks),
+        remaining_display: fmt(r.remaining_kopecks),
+      })),
+      total: +cnt.rows[0].count, page, limit,
+    });
+  } catch (e) {
+    console.error('[invoices list]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+app.get('/api/v1/invoices/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT i.*, c.name AS counterparty_name,
+        (i.amount_kopecks - i.paid_kopecks) AS remaining_kopecks
+      FROM invoices i
+      LEFT JOIN counterparties c ON i.counterparty_id = c.id
+      WHERE i.id = $1
+    `, [req.params.id]);
+
+    if (!rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+
+    const pmts = await pool.query(
+      'SELECT * FROM payments WHERE invoice_id = $1 ORDER BY created_at DESC',
+      [req.params.id]
+    );
+
+    const inv = rows[0];
+    return ok(res, {
+      ...inv,
+      amount_display:    fmt(inv.amount_kopecks),
+      paid_display:      fmt(inv.paid_kopecks),
+      remaining_display: fmt(inv.remaining_kopecks),
+      payments: pmts.rows.map(p => ({ ...p, amount_display: fmt(p.amount_kopecks) })),
+    });
+  } catch (e) {
+    console.error('[invoice get]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+app.post('/api/v1/invoices', async (req, res) => {
+  const { amount_kopecks, number, counterparty_id, due_date, notes, org_id } = req.body || {};
+  if (!amount_kopecks || amount_kopecks <= 0)
+    return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
+  if (!Number.isInteger(amount_kopecks))
+    return err(res, 400, 'amount_kopecks must be integer (kopecks)', 'VALIDATION_ERROR');
+
+  try {
+    const orgId = org_id || ORG;
+    const { rows } = await pool.query(`
+      INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, notes, status, created_by)
+      VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7) RETURNING *
+    `, [orgId, counterparty_id || null, number || null, amount_kopecks, due_date || null, notes || null, USER]);
+
+    await audit(orgId, USER, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
+    return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);
+  } catch (e) {
+    console.error('[invoice create]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+app.patch('/api/v1/invoices/:id/state', async (req, res) => {
+  const { transition, reason } = req.body || {};
+  try {
+    const { rows } = await pool.query('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
+    if (!rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+    const inv = rows[0];
+
+    const TRANSITIONS = {
+      mark_for_control: { from: ['CREATED'],                                  to: 'UNDER_CONTROL'   },
+      set_pending:      { from: ['UNDER_CONTROL'],                             to: 'PAYMENT_PENDING' },
+      open_dispute:     { from: ['PAYMENT_PENDING','OVERDUE','PARTIALLY_PAID'],to: 'DISPUTED'        },
+      archive:          { from: ['PAID'],                                      to: 'ARCHIVED'        },
+      write_off:        { from: ['OVERDUE'],                                   to: 'WRITTEN_OFF'     },
+      mark_overdue:     { from: ['PAYMENT_PENDING','UNDER_CONTROL'],           to: 'OVERDUE'         },
+    };
+
+    const t = TRANSITIONS[transition];
+    if (!t) return err(res, 400, `Unknown transition: ${transition}`, 'INVOICE_STATE_INVALID');
+    if (!t.from.includes(inv.status))
+      return err(res, 400, `Transition ${transition} not allowed from ${inv.status}`, 'INVOICE_STATE_INVALID');
+
+    await pool.query('UPDATE invoices SET status=$1, updated_at=NOW(), version=version+1 WHERE id=$2', [t.to, req.params.id]);
+    await audit(inv.org_id, USER, 'invoice.state_changed', 'invoice', req.params.id,
+      { status: inv.status }, { status: t.to, reason });
+
+    return ok(res, { id: req.params.id, previous_state: inv.status, new_state: t.to, transitioned_at: new Date().toISOString() });
+  } catch (e) {
+    console.error('[invoice state]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── Payments ────────────────────────────────────────────
+app.get('/api/v1/payments', async (req, res) => {
+  const orgId = req.query.org_id || ORG;
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.*, i.number AS invoice_number, c.name AS counterparty_name
+      FROM payments p
+      JOIN invoices i ON p.invoice_id = i.id
+      LEFT JOIN counterparties c ON i.counterparty_id = c.id
+      WHERE p.org_id = $1 ORDER BY p.created_at DESC LIMIT 50
+    `, [orgId]);
+    return ok(res, { items: rows.map(r => ({ ...r, amount_display: fmt(r.amount_kopecks) })) });
+  } catch (e) {
+    console.error('[payments list]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+app.post('/api/v1/payments', async (req, res) => {
+  const { invoice_id, amount_kopecks, method, reference, payment_date, org_id } = req.body || {};
+  if (!invoice_id)      return err(res, 400, 'invoice_id required', 'VALIDATION_ERROR');
+  if (!amount_kopecks || amount_kopecks <= 0)
+    return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
+  if (!Number.isInteger(amount_kopecks))
+    return err(res, 400, 'amount_kopecks must be integer', 'VALIDATION_ERROR');
+
+  try {
+    const invRows = await pool.query('SELECT * FROM invoices WHERE id=$1', [invoice_id]);
+    if (!invRows.rows.length) return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+    const inv = invRows.rows[0];
+
+    const remaining = inv.amount_kopecks - inv.paid_kopecks;
+    if (amount_kopecks > remaining)
+      return err(res, 400, `Amount exceeds remaining balance. Max: ${remaining} kopecks`, 'PAYMENT_VALIDATION_ERROR');
+
+    const { rows } = await pool.query(`
+      INSERT INTO payments(invoice_id, org_id, amount_kopecks, method, reference, payment_date, created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *
+    `, [invoice_id, org_id || inv.org_id, amount_kopecks,
+        method || 'bank_transfer', reference || null,
+        payment_date || new Date().toISOString().slice(0,10), USER]);
+
+    const newPaid   = inv.paid_kopecks + amount_kopecks;
+    const newStatus = newPaid >= inv.amount_kopecks ? 'PAID' : 'PARTIALLY_PAID';
+
+    await pool.query('UPDATE invoices SET paid_kopecks=$1, status=$2, updated_at=NOW() WHERE id=$3',
+      [newPaid, newStatus, invoice_id]);
+
+    await audit(inv.org_id, USER, 'payment.created', 'payment', rows[0].id,
+      { paid_kopecks: inv.paid_kopecks, status: inv.status },
+      { paid_kopecks: newPaid, status: newStatus });
+
+    return ok(res, {
+      payment_id:        rows[0].id,
+      invoice_id,
+      amount_display:    fmt(amount_kopecks),
+      remaining_display: fmt(inv.amount_kopecks - newPaid),
+      invoice_status:    newStatus,
+      status:            'confirmed',
+    }, 201);
+  } catch (e) {
+    console.error('[payment create]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── Counterparties ───────────────────────────────────────
+app.get('/api/v1/counterparties', async (req, res) => {
+  const orgId = req.query.org_id || ORG;
+  try {
+    const { rows } = await pool.query(`
+      SELECT c.*,
+        COUNT(i.id) AS invoice_count,
+        COALESCE(SUM(i.amount_kopecks - i.paid_kopecks)
+          FILTER (WHERE i.status NOT IN ('PAID','ARCHIVED')), 0) AS debt_kopecks
+      FROM counterparties c
+      LEFT JOIN invoices i ON i.counterparty_id = c.id
+      WHERE c.org_id = $1 AND c.is_active = true
+      GROUP BY c.id ORDER BY c.name
+    `, [orgId]);
+    return ok(res, { items: rows.map(r => ({ ...r, debt_display: fmt(r.debt_kopecks) })) });
+  } catch (e) {
+    console.error('[counterparties]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── Users ───────────────────────────────────────────────
+app.get('/api/v1/users/me', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.*, o.name AS org_name, o.plan
+       FROM users u
+       LEFT JOIN organizations o ON u.org_id = o.id
+       WHERE u.id = $1`, [USER]
+    );
+    if (!rows.length) return err(res, 404, 'User not found', 'NOT_FOUND');
+    const u = rows[0];
+    const perms = {
+      owner:       ['invoices:*','payments:*','org:admin','audit:read'],
+      accountant:  ['invoices:read','invoices:write','payments:read','payments:write'],
+      vendor_admin:['invoices:read','payments:read','audit:read','vendor:admin'],
+      readonly:    ['invoices:read','payments:read'],
+    };
+    return ok(res, {
+      id: u.id, email: u.email, name: u.name, role: u.role,
+      org_id: u.org_id, org_name: u.org_name, plan: u.plan,
+      trust_score: u.trust_score,
+      permissions: perms[u.role] || [],
+    });
+  } catch (e) {
+    console.error('[users/me]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── Audit ───────────────────────────────────────────────
+app.get('/api/v1/audit/logs', async (req, res) => {
+  const orgId  = req.query.org_id || ORG;
+  const action = req.query.action;
+  const limit  = Math.min(100, parseInt(req.query.limit) || 30);
+
+  try {
+    const params = [orgId];
+    let where = 'WHERE org_id = $1';
+    if (action) { params.push(action); where += ` AND action = $${params.length}`; }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM audit_logs ${where} ORDER BY timestamp DESC LIMIT $${params.length + 1}`,
+      [...params, limit]
+    );
+    return ok(res, { items: rows, total: rows.length });
+  } catch (e) {
+    console.error('[audit]', e.message);
+    return err(res, 500, e.message, 'SERVER_ERROR');
+  }
+});
+
+// ─── 404 ─────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.path} not found` } });
+});
+
+// ─── Start ───────────────────────────────────────────────
+async function start() {
+  // Wait for DB to be ready
+  let retries = 10;
+  while (retries > 0) {
+    try {
+      await pool.query('SELECT 1');
+      console.log('[DB] Connected to PostgreSQL');
+      break;
+    } catch (e) {
+      retries--;
+      console.log(`[DB] Waiting for PostgreSQL... (${retries} retries left)`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+
+  app.listen(port, () => {
+    console.log('\n========================================');
+    console.log(`  API Gateway: http://localhost:${port}`);
+    console.log(`  Health:      http://localhost:${port}/health`);
+    console.log(`  Dashboard:   http://localhost:${port}/api/v1/dashboard`);
+    console.log('========================================\n');
+  });
+}
+
+start().catch(console.error);
