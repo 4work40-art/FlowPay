@@ -45,6 +45,9 @@ done
 # Разово чистим демо-счета/платежи/контрагентов, засеянные первым запуском (безопасно перезапускать)
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/cleanup_demo_data.sql || true
 
+# Миграции — идемпотентны, безопасно перезапускать
+docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_platform_admin.sql || true
+
 chmod +x backup.sh
 CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"
 ( crontab -l 2>/dev/null | grep -vF 'FlowPay/backup.sh' ; echo "$CRON_LINE" ) | crontab -

@@ -28,7 +28,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       router.replace('/login');
       return;
     }
-    setUser(getStoredUser());
+    const stored = getStoredUser();
+    if (pathname.startsWith('/admin') && !stored?.is_platform_admin) {
+      router.replace('/dashboard');
+      return;
+    }
+    setUser(stored);
     setChecked(true);
   }, [pathname, router]);
 
@@ -63,6 +68,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span>{n.label}</span>
             </a>
           ))}
+          {user?.is_platform_admin && (
+            <a href="/admin" className="nav-item" style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
+              <span>👑</span>
+              <span>Кабинет создателя</span>
+            </a>
+          )}
         </nav>
         <div className="sidebar-footer">
           <div className="avatar">{initials}</div>

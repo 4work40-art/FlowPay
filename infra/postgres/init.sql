@@ -27,6 +27,7 @@ CREATE TABLE users (
   role user_role NOT NULL DEFAULT 'owner',
   org_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
   trust_score INTEGER NOT NULL DEFAULT 50 CHECK (trust_score BETWEEN 0 AND 100),
+  is_platform_admin BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
   last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -106,5 +107,5 @@ CREATE INDEX ON audit_logs(action);
 -- логин/пароль ниже не трогаем, чтобы не сломать текущий доступ.
 INSERT INTO organizations VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',10,true,NOW(),NOW());
 
-INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score) VALUES
-  ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85);
+INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score,is_platform_admin) VALUES
+  ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85,true);

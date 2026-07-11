@@ -92,6 +92,11 @@ export const api = {
     me: () => req('/users/me'),
   },
 
+  admin: {
+    overview: () => req('/admin/overview'),
+    organizations: () => req('/admin/organizations'),
+  },
+
   audit: {
     logs: (params: Record<string, string> = {}) =>
       req(`/audit/logs?${new URLSearchParams(params)}`),

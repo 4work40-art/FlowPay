@@ -6,6 +6,7 @@ export type StoredUser = {
   org_id: string;
   org_name: string;
   plan: string;
+  is_platform_admin?: boolean;
 };
 
 const TOKEN_KEY = 'sk_token';
