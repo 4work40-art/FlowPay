@@ -154,6 +154,8 @@ export const api = {
     subscription: () => req('/billing/subscription'),
     checkout: (plan: string) =>
       req('/billing/checkout', { method:'POST', body:JSON.stringify({ plan }) }),
+    cancel: () =>
+      req('/billing/cancel', { method:'POST' }),
   },
 
   audit: {

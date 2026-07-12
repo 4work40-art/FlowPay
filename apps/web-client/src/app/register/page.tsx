@@ -91,6 +91,11 @@ export default function RegisterPage() {
         <div style={{ textAlign: 'center', fontSize: 13 }}>
           Уже есть аккаунт? <Link href="/login">Войти</Link>
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 18, paddingTop: 14, borderTop: '1px solid #eee', color: '#999', fontSize: 12 }}>
+          <span>🔒</span>
+          <span>Данные вашей организации не видны другим пользователям сервиса</span>
+        </div>
       </form>
     </div>
   );

@@ -32,9 +32,17 @@ router.get('/', authMiddleware, async (req, res) => {
         AND due_date BETWEEN NOW() AND NOW() + INTERVAL '7 days'
     `, [orgId]);
 
-    const uRows = await pool.query(
-      `SELECT trust_score FROM users WHERE org_id = $1 AND role = 'owner' LIMIT 1`, [orgId]
-    );
+    // Trust Score — не статичное число, а доля собственных счетов организации,
+    // оплаченных без просрочки/списания/спора. Пока нет истории — 100 (нейтральный старт),
+    // не 50: у только что зарегистрированной организации нет причин выглядеть "подозрительно".
+    const trustRows = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'PAID') AS good,
+        COUNT(*) FILTER (WHERE status IN ('OVERDUE', 'WRITTEN_OFF', 'DISPUTED')) AS bad
+      FROM invoices WHERE org_id = $1
+    `, [orgId]);
+    const good = +trustRows.rows[0].good, bad = +trustRows.rows[0].bad;
+    const trustScore = (good + bad) > 0 ? Math.round((good / (good + bad)) * 100) : 100;
 
     const s = rows[0];
     return ok(res, {
@@ -44,7 +52,7 @@ router.get('/', authMiddleware, async (req, res) => {
       paid_this_month: { kopecks: +s.paid_month,    display: fmt(s.paid_month) },
       due_7_days:      { kopecks: +due7.rows[0].v,  display: fmt(due7.rows[0].v), count: +due7.rows[0].c },
       total_invoices:  +s.total_invoices,
-      trust_score:     uRows.rows[0]?.trust_score || 50,
+      trust_score:     trustScore,
     });
   } catch (e) {
     return dbErr(res, e, '[dashboard]');

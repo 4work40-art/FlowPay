@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 
-type Me = { name: string; email: string; role: string; org_name: string; plan: string; trust_score: number };
+type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
 type Org = { id: string; name: string; inn: string | null; kpp: string | null; plan: string };
 

@@ -76,6 +76,47 @@ router.post('/checkout', authMiddleware, async (req, res) => {
   }
 });
 
+// Платежи ЮKassa у нас разовые (не автосписание), поэтому "отмена подписки"
+// технически — это немедленный даунгрейд на free, а не отказ от будущего
+// списания. Ближайший оплаченный период не возвращается (без интеграции
+// с реальным recurring-биллингом это было бы ложной гарантией).
+router.post('/cancel', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'owner')
+    return err(res, 403, 'Изменить тариф может только владелец организации', 'FORBIDDEN');
+
+  try {
+    const orgRows = await pool.query('SELECT plan FROM organizations WHERE id=$1', [req.user.org_id]);
+    if (!orgRows.rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
+    if (orgRows.rows[0].plan === 'free')
+      return err(res, 400, 'Вы уже на бесплатном тарифе', 'VALIDATION_ERROR');
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE organizations SET plan='free', invoice_limit=$1, updated_at=NOW() WHERE id=$2`,
+        [PLANS.free.invoice_limit, req.user.org_id]
+      );
+      await client.query(
+        `UPDATE subscriptions SET plan='free', status='canceled', current_period_end=NULL, updated_at=NOW() WHERE org_id=$1`,
+        [req.user.org_id]
+      );
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    await audit(req.user.org_id, req.user.id, 'billing.subscription_canceled', 'organization', req.user.org_id,
+      { plan: orgRows.rows[0].plan }, { plan: 'free' });
+    return ok(res, { plan: 'free', invoice_limit: PLANS.free.invoice_limit });
+  } catch (e) {
+    return dbErr(res, e, '[billing cancel]');
+  }
+});
+
 // ЮKassa шлёт уведомление на публичный webhook без подписи запроса —
 // поэтому тело уведомления используется только как триггер: реальный
 // статус всегда перепроверяется через GET /payments/:id по API.
