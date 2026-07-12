@@ -110,6 +110,21 @@ CREATE TABLE billing_transactions (
 CREATE INDEX ON billing_transactions(org_id);
 CREATE INDEX ON billing_transactions(status);
 
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  invoice_id UUID REFERENCES invoices(id) ON DELETE CASCADE,
+  filename VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(100),
+  size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
+  storage_path VARCHAR(500) NOT NULL,
+  uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON documents(org_id);
+CREATE INDEX ON documents(invoice_id);
+
 CREATE TABLE audit_logs (
   id BIGSERIAL PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
