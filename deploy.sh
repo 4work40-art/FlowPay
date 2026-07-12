@@ -52,6 +52,7 @@ docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgr
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_platform_admin.sql || true
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_multi_tenancy.sql || true
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_billing.sql || true
+docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_documents.sql || true
 
 chmod +x backup.sh
 CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"

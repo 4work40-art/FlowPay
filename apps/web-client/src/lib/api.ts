@@ -2,6 +2,10 @@
 // NEXT_PUBLIC_API_URL устанавливается в docker-compose как http://localhost:3001/api/v1
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+export function apiUrl(path: string): string {
+  return `${BASE}${path}`;
+}
+
 function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('sk_token');
@@ -69,6 +73,38 @@ export const api = {
     }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
     transition: (id: string, transition: string, reason?: string) =>
       req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
+  },
+
+  documents: {
+    list: (invoiceId: string) => req(`/invoices/${invoiceId}/documents`),
+    upload: async (invoiceId: string, file: File) => {
+      const token = getStoredToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(apiUrl(`/invoices/${invoiceId}/documents`), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
+    // /download требует Bearer-токен, поэтому обычная <a href> не подходит —
+    // качаем как blob и открываем через временный object URL.
+    download: async (documentId: string, filename: string) => {
+      const token = getStoredToken();
+      const res = await fetch(apiUrl(`/documents/${documentId}/download`), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    },
   },
 
   payments: {

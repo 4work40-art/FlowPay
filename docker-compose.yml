@@ -52,6 +52,9 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
       YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,3 +105,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
