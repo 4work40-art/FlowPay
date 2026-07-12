@@ -52,7 +52,10 @@ export default function LoginPage() {
           style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
         />
 
-        <label htmlFor="login-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль</label>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <label htmlFor="login-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль</label>
+          <Link href="/forgot-password" style={{ fontSize: 12 }}>Забыли пароль?</Link>
+        </div>
         <input
           id="login-password"
           type="password"
