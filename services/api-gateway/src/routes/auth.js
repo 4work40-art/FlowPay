@@ -67,7 +67,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: org.id, org_name: org.name, plan: org.plan,
-        trust_score: u.trust_score, is_platform_admin: false,
+        is_platform_admin: false,
       }
     }, 201);
   } catch (e) {
@@ -110,7 +110,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: u.org_id, org_name: u.org_name, plan: u.plan,
-        trust_score: u.trust_score, is_platform_admin: !!u.is_platform_admin
+        is_platform_admin: !!u.is_platform_admin
       }
     });
   } catch (e) {

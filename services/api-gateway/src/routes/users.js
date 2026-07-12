@@ -26,7 +26,6 @@ router.get('/me', authMiddleware, async (req, res) => {
     return ok(res, {
       id: u.id, email: u.email, name: u.name, role: u.role,
       org_id: u.org_id, org_name: u.org_name, plan: u.plan,
-      trust_score: u.trust_score,
       permissions: PERMISSIONS[u.role] || [],
     });
   } catch (e) {
@@ -62,7 +61,7 @@ router.patch('/me/password', authMiddleware, async (req, res) => {
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, email, name, role, trust_score, is_active, last_login_at, created_at
+      `SELECT id, email, name, role, is_active, last_login_at, created_at
        FROM users WHERE org_id = $1 ORDER BY created_at`,
       [req.user.org_id]
     );

@@ -72,6 +72,11 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', fontSize: 13 }}>
           Нет аккаунта? <Link href="/register">Зарегистрировать организацию</Link>
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 18, paddingTop: 14, borderTop: '1px solid #eee', color: '#999', fontSize: 12 }}>
+          <span>🔒</span>
+          <span>Данные шифруются, каждая организация видит только свои счета</span>
+        </div>
       </form>
     </div>
   );

@@ -20,6 +20,8 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     Promise.all([api.billing.plans(), api.billing.subscription(), api.users.me()])
@@ -40,6 +42,20 @@ export default function BillingPage() {
       setCheckoutError(e.message || 'Не удалось создать платёж');
     } finally {
       setCheckoutPlan(null);
+    }
+  };
+
+  const cancelSubscription = async () => {
+    if (!confirm('Вернуться на бесплатный тариф? Лимит счетов сразу станет прежним, оплаченный период не возвращается.')) return;
+    setCancelError('');
+    setCanceling(true);
+    try {
+      const res = await api.billing.cancel();
+      setSub(s => s ? { ...s, plan: res.data.plan, invoice_limit: res.data.invoice_limit, current_period_end: undefined } : s);
+    } catch (e: any) {
+      setCancelError(e.message || 'Не удалось отменить подписку');
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -64,10 +80,16 @@ export default function BillingPage() {
               <strong>{sub.invoice_limit ?? 'без ограничений'}</strong>
             </div>
             {sub.current_period_end && (
-              <div>
+              <div style={{ marginBottom: 10 }}>
                 <span className="field-label">Действует до: </span>
                 <strong>{new Date(sub.current_period_end).toLocaleDateString('ru-RU')}</strong>
               </div>
+            )}
+            {cancelError && <div className="error-box" style={{ marginBottom: 10 }}>{cancelError}</div>}
+            {sub.plan !== 'free' && me?.role === 'owner' && (
+              <button className="btn btn-sm" disabled={canceling} onClick={cancelSubscription}>
+                {canceling ? 'Отменяем…' : 'Вернуться на бесплатный тариф'}
+              </button>
             )}
           </div>
         </div>
