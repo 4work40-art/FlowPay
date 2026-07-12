@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, PLAN_LABEL } from '@/lib/api';
 
 type Overview = {
   organizations: number;
@@ -11,10 +11,6 @@ type Overview = {
   plan_distribution: Record<string, number>;
   growth: { week: string; organizations: number }[];
   recent_activity: { id: number; timestamp: string; action: string; resource: string; resource_id: string | null; status: string; org_name: string | null }[];
-};
-
-const PLAN_LABEL: Record<string, string> = {
-  free: 'Free', pro: 'Pro', business: 'Business', enterprise: 'Enterprise',
 };
 
 export default function AdminOverviewPage() {

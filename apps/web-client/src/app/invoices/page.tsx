@@ -120,7 +120,7 @@ export default function InvoicesPage() {
         )}
         <div className="table-footer">
           <span>{filtered.length} из {invoices.length} счетов</span>
-          <a href="/dashboard">← Dashboard</a>
+          <a href="/dashboard">← Дашборд</a>
         </div>
       </div>
     </div>

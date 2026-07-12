@@ -2,11 +2,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { api, ROLE_LABEL } from '@/lib/api';
+import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 
 const NAV = [
-  { href: '/dashboard',      icon: '📊', label: 'Dashboard'    },
+  { href: '/dashboard',      icon: '📊', label: 'Дашборд'      },
   { href: '/invoices',       icon: '📋', label: 'Счета'        },
   { href: '/payments',       icon: '💳', label: 'Платежи'      },
   { href: '/counterparties', icon: '🤝', label: 'Контрагенты'  },
@@ -79,7 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="avatar">{initials}</div>
             <div style={{ flex: 1 }}>
               <div className="avatar-name">{user?.name ?? '—'}</div>
-              <div className="avatar-role">{ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {user?.plan}</div>
+              <div className="avatar-role">{ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}</div>
             </div>
           </Link>
           <button className="btn btn-sm" onClick={logout} title="Выйти" aria-label="Выйти">⏻</button>

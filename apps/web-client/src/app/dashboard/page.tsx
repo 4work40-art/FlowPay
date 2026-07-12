@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 
 type Invoice = {
@@ -89,15 +89,15 @@ export default function DashboardPage() {
       {/* ─── Заголовок ───────────────────── */}
       <div className="page-header">
         <div>
-          <div className="page-title">Dashboard</div>
-          <div className="page-sub">{user?.org_name ?? '—'} · {ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {user?.plan}</div>
+          <div className="page-title">Дашборд</div>
+          <div className="page-sub">{user?.org_name ?? '—'} · {ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="view-toggle">
             <button
               className={`view-toggle-btn${mode === 'quick' ? ' active' : ''}`}
               onClick={() => setMode('quick')}>
-              Quick View
+              Быстрый вид
             </button>
             <button
               className={`view-toggle-btn${mode === 'detail' ? ' active' : ''}`}

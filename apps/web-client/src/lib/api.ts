@@ -140,7 +140,11 @@ export const STATUS_COLOR: Record<string, string> = {
 };
 
 export const ROLE_LABEL: Record<string, string> = {
-  owner: 'Owner', accountant: 'Бухгалтер', vendor_admin: 'Vendor Admin', readonly: 'Read only',
+  owner: 'Владелец', accountant: 'Бухгалтер', vendor_admin: 'Администратор поставщика', readonly: 'Только чтение',
+};
+
+export const PLAN_LABEL: Record<string, string> = {
+  free: 'Бесплатный', pro: 'Профессиональный', business: 'Бизнес', enterprise: 'Корпоративный',
 };
 
 export const STATUS_ICON: Record<string, string> = {

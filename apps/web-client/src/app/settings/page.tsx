@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api, ROLE_LABEL } from '@/lib/api';
+import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string; trust_score: number };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
@@ -60,7 +60,7 @@ export default function SettingsPage() {
             </div>
             <div style={{ marginBottom: 10 }}>
               <div className="field-label">Тариф</div>
-              <div style={{ fontWeight: 500 }}>{me?.plan}</div>
+              <div style={{ fontWeight: 500 }}>{PLAN_LABEL[me?.plan ?? ''] ?? me?.plan}</div>
             </div>
             <div>
               <div className="field-label">Ваша роль</div>

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, PLAN_LABEL } from '@/lib/api';
 
 type Org = {
   id: string;
@@ -13,10 +13,6 @@ type Org = {
   invoice_count: string;
   debt_kopecks: string;
   debt_display: string;
-};
-
-const PLAN_LABEL: Record<string, string> = {
-  free: 'Free', pro: 'Pro', business: 'Business', enterprise: 'Enterprise',
 };
 
 export default function AdminOrganizationsPage() {

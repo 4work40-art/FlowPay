@@ -50,18 +50,18 @@ function signToken(user) {
 async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
   const token  = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return err(res, 401, 'Missing bearer token', 'UNAUTHORIZED');
+  if (!token) return err(res, 401, 'Токен доступа отсутствует', 'UNAUTHORIZED');
 
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET);
   } catch (e) {
-    return err(res, 401, 'Invalid or expired token', 'UNAUTHORIZED');
+    return err(res, 401, 'Токен недействителен или истёк', 'UNAUTHORIZED');
   }
 
   try {
     const revoked = await redis.get(`revoked:${payload.jti}`);
-    if (revoked) return err(res, 401, 'Token has been revoked', 'UNAUTHORIZED');
+    if (revoked) return err(res, 401, 'Токен отозван', 'UNAUTHORIZED');
   } catch (e) {
     console.warn('[auth] revocation check skipped:', e.message);
   }
@@ -74,7 +74,7 @@ async function authMiddleware(req, res, next) {
 }
 
 function requirePlatformAdmin(req, res, next) {
-  if (!req.user?.is_platform_admin) return err(res, 403, 'Platform admin access required', 'FORBIDDEN');
+  if (!req.user?.is_platform_admin) return err(res, 403, 'Требуются права администратора платформы', 'FORBIDDEN');
   next();
 }
 
@@ -94,18 +94,18 @@ function err(res, status, message, code) {
 // Сырые ошибки Postgres не должны улетать клиенту как есть — известные
 // коды валидации превращаем в понятный 400, остальное прячем за 500.
 const DB_VALIDATION_MESSAGES = {
-  '22007': 'Invalid date/time value',
-  '22008': 'Date/time out of range',
-  '22P02': 'Invalid input format',
-  '23502': 'Required field missing',
-  '23503': 'Referenced record not found',
-  '23514': 'Value violates a constraint',
+  '22007': 'Некорректная дата/время',
+  '22008': 'Дата/время вне допустимого диапазона',
+  '22P02': 'Некорректный формат данных',
+  '23502': 'Не заполнено обязательное поле',
+  '23503': 'Связанная запись не найдена',
+  '23514': 'Значение нарушает ограничение',
 };
 function dbErr(res, e, tag) {
   console.error(tag, e.message);
   const msg = DB_VALIDATION_MESSAGES[e.code];
   if (msg) return err(res, 400, msg, 'VALIDATION_ERROR');
-  return err(res, 500, 'Internal server error', 'SERVER_ERROR');
+  return err(res, 500, 'Внутренняя ошибка сервера', 'SERVER_ERROR');
 }
 
 async function audit(orgId, userId, action, resource, resourceId, before, after) {
@@ -133,7 +133,7 @@ app.get('/health', async (req, res) => {
 app.post('/api/v1/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
-    return err(res, 400, 'Email and password required', 'VALIDATION_ERROR');
+    return err(res, 400, 'Укажите email и пароль', 'VALIDATION_ERROR');
 
   try {
     // Используем pgcrypto для проверки пароля — без bcrypt npm модуля
@@ -147,7 +147,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
     );
 
     if (!rows.length)
-      return err(res, 401, 'Invalid email or password', 'UNAUTHORIZED');
+      return err(res, 401, 'Неверный email или пароль', 'UNAUTHORIZED');
 
     const u = rows[0];
     const { token, jti } = signToken(u);
@@ -176,7 +176,7 @@ app.post('/api/v1/auth/logout', authMiddleware, async (req, res) => {
   } catch (e) {
     console.warn('[logout] revoke failed:', e.message);
   }
-  return ok(res, { message: 'Logged out' });
+  return ok(res, { message: 'Вы вышли из системы' });
 });
 
 // ─── Dashboard ───────────────────────────────────────────
@@ -276,7 +276,7 @@ app.get('/api/v1/invoices/:id', authMiddleware, async (req, res) => {
     `, [req.params.id]);
 
     if (!rows.length || rows[0].org_id !== req.user.org_id)
-      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+      return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
 
     const pmts = await pool.query(
       'SELECT * FROM payments WHERE invoice_id = $1 ORDER BY created_at DESC',
@@ -299,9 +299,9 @@ app.get('/api/v1/invoices/:id', authMiddleware, async (req, res) => {
 app.post('/api/v1/invoices', authMiddleware, async (req, res) => {
   const { amount_kopecks, number, counterparty_id, due_date, notes } = req.body || {};
   if (!amount_kopecks || amount_kopecks <= 0)
-    return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
+    return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
-    return err(res, 400, 'amount_kopecks must be integer (kopecks)', 'VALIDATION_ERROR');
+    return err(res, 400, 'Сумма должна быть целым числом (в копейках)', 'VALIDATION_ERROR');
 
   try {
     const orgId = req.user.org_id;
@@ -317,7 +317,7 @@ app.post('/api/v1/invoices', authMiddleware, async (req, res) => {
     if (counterparty_id) {
       const cp = await pool.query('SELECT id FROM counterparties WHERE id=$1 AND org_id=$2', [counterparty_id, orgId]);
       if (!cp.rows.length)
-        return err(res, 400, 'Counterparty not found in your organization', 'VALIDATION_ERROR');
+        return err(res, 400, 'Контрагент не найден в вашей организации', 'VALIDATION_ERROR');
     }
 
     const { rows } = await pool.query(`
@@ -337,7 +337,7 @@ app.patch('/api/v1/invoices/:id/state', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
     if (!rows.length || rows[0].org_id !== req.user.org_id)
-      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+      return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
     const inv = rows[0];
 
     const TRANSITIONS = {
@@ -351,9 +351,9 @@ app.patch('/api/v1/invoices/:id/state', authMiddleware, async (req, res) => {
     };
 
     const t = TRANSITIONS[transition];
-    if (!t) return err(res, 400, `Unknown transition: ${transition}`, 'INVOICE_STATE_INVALID');
+    if (!t) return err(res, 400, `Неизвестный переход статуса: ${transition}`, 'INVOICE_STATE_INVALID');
     if (!t.from.includes(inv.status))
-      return err(res, 400, `Transition ${transition} not allowed from ${inv.status}`, 'INVOICE_STATE_INVALID');
+      return err(res, 400, `Переход «${transition}» недопустим из статуса ${inv.status}`, 'INVOICE_STATE_INVALID');
 
     await pool.query('UPDATE invoices SET status=$1, updated_at=NOW(), version=version+1 WHERE id=$2', [t.to, req.params.id]);
     await audit(inv.org_id, req.user.id, 'invoice.state_changed', 'invoice', req.params.id,
@@ -393,11 +393,11 @@ const PAYMENT_BLOCKED_STATUSES = ['DISPUTED', 'ARCHIVED', 'WRITTEN_OFF'];
 
 app.post('/api/v1/payments', authMiddleware, async (req, res) => {
   const { invoice_id, amount_kopecks, method, reference, payment_date } = req.body || {};
-  if (!invoice_id)      return err(res, 400, 'invoice_id required', 'VALIDATION_ERROR');
+  if (!invoice_id)      return err(res, 400, 'Не указан ID счёта', 'VALIDATION_ERROR');
   if (!amount_kopecks || amount_kopecks <= 0)
-    return err(res, 400, 'amount_kopecks must be > 0', 'VALIDATION_ERROR');
+    return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
-    return err(res, 400, 'amount_kopecks must be integer', 'VALIDATION_ERROR');
+    return err(res, 400, 'Сумма должна быть целым числом', 'VALIDATION_ERROR');
 
   const client = await pool.connect();
   try {
@@ -408,19 +408,19 @@ app.post('/api/v1/payments', authMiddleware, async (req, res) => {
     const invRows = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [invoice_id]);
     if (!invRows.rows.length || invRows.rows[0].org_id !== req.user.org_id) {
       await client.query('ROLLBACK');
-      return err(res, 404, 'Invoice not found', 'NOT_FOUND');
+      return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
     }
     const inv = invRows.rows[0];
 
     if (PAYMENT_BLOCKED_STATUSES.includes(inv.status)) {
       await client.query('ROLLBACK');
-      return err(res, 400, `Invoice in status ${inv.status} cannot accept payments`, 'INVOICE_STATE_INVALID');
+      return err(res, 400, `Счёт в статусе ${inv.status} не принимает платежи`, 'INVOICE_STATE_INVALID');
     }
 
     const remaining = inv.amount_kopecks - inv.paid_kopecks;
     if (amount_kopecks > remaining) {
       await client.query('ROLLBACK');
-      return err(res, 400, `Amount exceeds remaining balance. Max: ${remaining} kopecks`, 'PAYMENT_VALIDATION_ERROR');
+      return err(res, 400, `Сумма превышает остаток к оплате. Максимум: ${(remaining / 100).toFixed(2)} ₽`, 'PAYMENT_VALIDATION_ERROR');
     }
 
     const { rows } = await client.query(`
@@ -481,7 +481,7 @@ app.get('/api/v1/counterparties', authMiddleware, async (req, res) => {
 app.post('/api/v1/counterparties', authMiddleware, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type } = req.body || {};
   if (!name || !name.trim())
-    return err(res, 400, 'name is required', 'VALIDATION_ERROR');
+    return err(res, 400, 'Укажите название', 'VALIDATION_ERROR');
 
   try {
     const { rows } = await pool.query(`
@@ -501,7 +501,7 @@ app.patch('/api/v1/counterparties/:id', authMiddleware, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type, is_active } = req.body || {};
   try {
     const existing = await pool.query('SELECT * FROM counterparties WHERE id=$1 AND org_id=$2', [req.params.id, req.user.org_id]);
-    if (!existing.rows.length) return err(res, 404, 'Counterparty not found', 'NOT_FOUND');
+    if (!existing.rows.length) return err(res, 404, 'Контрагент не найден', 'NOT_FOUND');
 
     const { rows } = await pool.query(`
       UPDATE counterparties SET
@@ -527,7 +527,7 @@ app.get('/api/v1/users/me', authMiddleware, async (req, res) => {
        LEFT JOIN organizations o ON u.org_id = o.id
        WHERE u.id = $1`, [req.user.id]
     );
-    if (!rows.length) return err(res, 404, 'User not found', 'NOT_FOUND');
+    if (!rows.length) return err(res, 404, 'Пользователь не найден', 'NOT_FOUND');
     const u = rows[0];
     const perms = {
       owner:       ['invoices:*','payments:*','org:admin','audit:read'],
@@ -549,23 +549,23 @@ app.get('/api/v1/users/me', authMiddleware, async (req, res) => {
 app.patch('/api/v1/users/me/password', authMiddleware, async (req, res) => {
   const { current_password, new_password } = req.body || {};
   if (!current_password || !new_password)
-    return err(res, 400, 'current_password and new_password required', 'VALIDATION_ERROR');
+    return err(res, 400, 'Укажите текущий и новый пароль', 'VALIDATION_ERROR');
   if (new_password.length < 8)
-    return err(res, 400, 'new_password must be at least 8 characters', 'VALIDATION_ERROR');
+    return err(res, 400, 'Новый пароль должен содержать не менее 8 символов', 'VALIDATION_ERROR');
 
   try {
     const check = await pool.query(
       'SELECT id FROM users WHERE id=$1 AND password_hash = crypt($2, password_hash)',
       [req.user.id, current_password]
     );
-    if (!check.rows.length) return err(res, 401, 'Current password is incorrect', 'UNAUTHORIZED');
+    if (!check.rows.length) return err(res, 401, 'Текущий пароль неверен', 'UNAUTHORIZED');
 
     await pool.query(
       `UPDATE users SET password_hash = crypt($1, gen_salt('bf')), updated_at = NOW() WHERE id = $2`,
       [new_password, req.user.id]
     );
     await audit(req.user.org_id, req.user.id, 'user.password_changed', 'user', req.user.id, null, null);
-    return ok(res, { message: 'Password changed' });
+    return ok(res, { message: 'Пароль изменён' });
   } catch (e) {
     return dbErr(res, e, '[password change]');
   }
@@ -687,7 +687,7 @@ app.get('/api/v1/admin/organizations', authMiddleware, requirePlatformAdmin, asy
 
 // ─── 404 ─────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.path} not found` } });
+  res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Маршрут ${req.method} ${req.path} не найден` } });
 });
 
 // ─── Start ───────────────────────────────────────────────

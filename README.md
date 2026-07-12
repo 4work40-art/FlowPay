@@ -1,55 +1,61 @@
-# Счёт&Контроль — v3 (стили исправлены)
+# Счёт&Контроль
 
-## Изменения в v3
+Веб-сервис для контроля дебиторской задолженности: учёт счетов, платежей, контрагентов, отслеживание просрочек и статуса оплат для небольшой организации.
 
-**Проблема:** Tailwind CSS не компилировался в Docker — отображался только текст без стилей.
+## Возможности
 
-**Решение:** Полностью удалён Tailwind. Заменён на чистый CSS файл (`src/styles/globals.css`)
-который работает без сборки, без PostCSS, без конфигурации — сразу.
+- Дашборд с ключевыми показателями (задолженность, просрочка, платежи за месяц)
+- Счета: создание, детальная карточка, история платежей, полный жизненный цикл статусов (создан → на контроле → ожидает оплаты → оплачен/просрочен/спор/списан/архив)
+- Платежи: фиксация оплаты по счёту с проверкой остатка, пагинация, экспорт в CSV
+- Контрагенты: карточки с ИНН/КПП, автоматический подсчёт долга по каждому
+- Аналитика: возраст просроченной задолженности (0–30 / 30–60 / 60–90 / 90+ дней), журнал событий
+- Настройки: смена пароля, состав команды организации
+- Кабинет создателя (`/admin`) — сводная статистика по всем организациям на платформе: рост, распределение по тарифам, активность (доступен только пользователям с флагом `is_platform_admin`)
+- Реальная авторизация: подписанные JWT-токены, отзыв через Redis при выходе
 
-## Запуск (Windows)
+## Технологии
 
-1. Распакуй архив: правой кнопкой → **Извлечь всё**
-2. Войди в папку `schyot-kontrol`
-3. Двойной клик на **INSTALL_WINDOWS.bat**
-4. Дождись сообщения "ГОТОВО!" и открытия браузера
+- **Backend**: Node.js + Express + PostgreSQL (`services/api-gateway`)
+- **Frontend**: Next.js 14 (App Router) + TypeScript, чистый CSS без сборочных фреймворков (`apps/web-client`)
+- **Инфраструктура**: Docker Compose (Postgres, Redis, API, фронтенд, Adminer, Redis Commander)
 
-**Требование:** Docker Desktop запущен (иконка кита в трее)
+## Локальный запуск
 
-## Адреса
+```bash
+cp .env.example .env    # заполнить своими значениями (пароли, JWT_SECRET)
+docker compose up -d --build
+```
 
 | Сервис | URL |
 |--------|-----|
 | Приложение | http://localhost:3000 |
 | API Health | http://localhost:3001/health |
-| Dashboard API | http://localhost:3001/api/v1/dashboard |
-| База данных (Adminer) | http://localhost:8080 |
-| Redis UI | http://localhost:8081 |
+| Adminer (просмотр БД) | http://localhost:8080 (только с самого сервера) |
+| Redis UI | http://localhost:8081 (только с самого сервера) |
 
-## Логин
+**Adminer:** сервер `postgres`, пользователь `sk_user`, пароль — значение `POSTGRES_PASSWORD` из `.env`, база `schyot_kontrol`.
 
+## Продакшн-деплой (VPS)
+
+Однострочный скрипт `deploy.sh` ставит Docker, клонирует репозиторий, генерирует секреты, поднимает стек, применяет миграции и настраивает файрвол + автобэкапы:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/4work40-art/FlowPay/main/deploy.sh | bash -s <IP_СЕРВЕРА>
 ```
-demo@schyot-kontrol.ru / demo1234
+
+Повторный деплой на уже настроенном сервере:
+
+```bash
+cd /opt/FlowPay && git pull && ./deploy.sh <IP_СЕРВЕРА>
 ```
 
-## Bat файлы
+## Переменные окружения
 
-| Файл | Назначение |
-|------|-----------|
-| INSTALL_WINDOWS.bat | Первый запуск |
-| STOP.bat | Остановить |
-| RESTART.bat | Пересобрать и перезапустить |
-| LOGS.bat | Логи в реальном времени |
-| STATUS.bat | Статус контейнеров |
-| RESET_DB.bat | Сброс БД + demo данные |
+См. `.env.example`. Обязательные: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET` (от 32 символов — сервер откажется стартовать со слабым/пустым значением), `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`.
 
-## Adminer (просмотр базы)
+## Авторизация
 
-http://localhost:8080
-- Сервер: `postgres`
-- Пользователь: `sk_user`
-- Пароль: `sk_secret_local`
-- База: `schyot_kontrol`
+Вход по email/паролю выдаёт подписанный JWT (24 часа). Все API-эндпоинты, кроме `/health` и `/auth/login`, требуют заголовок `Authorization: Bearer <token>`. Выход из системы отзывает токен через Redis.
 
 ## Бэкапы (боевой сервер)
 
@@ -61,21 +67,18 @@ cd /opt/FlowPay
 gunzip -c backups/schyot_kontrol_ФАЙЛ.sql.gz | docker compose exec -T postgres psql -U sk_user schyot_kontrol
 ```
 
-## Авторизация
+## Диагностика
 
-Вход по email/паролю выдаёт подписанный JWT (24 часа). Все API-эндпоинты, кроме `/health` и `/auth/login`, требуют заголовок `Authorization: Bearer <token>`. Logout инвалидирует токен через Redis.
-
-## Troubleshooting
-
-**Проблема: нет стилей** → `RESTART.bat`
-
-**Проблема: данные не загружаются** → проверь http://localhost:3001/health
-
-**Проблема: всё сломалось** → `RESET_DB.bat` (сбрасывает всё до нуля)
-
-**Проверить API вручную (Windows PowerShell):**
-```powershell
-Invoke-RestMethod http://localhost:3001/health
-Invoke-RestMethod http://localhost:3001/api/v1/dashboard
-Invoke-RestMethod http://localhost:3001/api/v1/invoices
+**Проверить API вручную:**
+```bash
+curl http://localhost:3001/health
+curl -H "Authorization: Bearer <token>" http://localhost:3001/api/v1/dashboard
 ```
+
+**Логи контейнеров:** `docker compose logs -f [сервис]`
+
+**Полный сброс локальной БД:** `docker compose down -v && docker compose up -d --build`
+
+## Дальнейшее развитие
+
+Путь масштабирования (домен/HTTPS, приглашение команды, самостоятельная регистрация организаций, мониторинг, CI/CD) описан в [ROADMAP.md](ROADMAP.md). Сводка текущего состояния проекта — в [SUMMARY.md](SUMMARY.md).
