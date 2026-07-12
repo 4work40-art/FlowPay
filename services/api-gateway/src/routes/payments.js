@@ -8,18 +8,25 @@ const router = express.Router();
 
 router.get('/', authMiddleware, async (req, res) => {
   const orgId  = req.user.org_id;
+  const from   = req.query.from; // YYYY-MM-DD, по payment_date
+  const to     = req.query.to;
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
   try {
+    const params = [orgId];
+    let where = 'WHERE p.org_id = $1';
+    if (from) { params.push(from); where += ` AND p.payment_date >= $${params.length}`; }
+    if (to)   { params.push(to);   where += ` AND p.payment_date <= $${params.length}`; }
+
     const { rows } = await pool.query(`
       SELECT p.*, i.number AS invoice_number, c.name AS counterparty_name
       FROM payments p
       JOIN invoices i ON p.invoice_id = i.id
       LEFT JOIN counterparties c ON i.counterparty_id = c.id
-      WHERE p.org_id = $1 ORDER BY p.created_at DESC LIMIT $2 OFFSET $3
-    `, [orgId, limit, offset]);
-    const cnt = await pool.query('SELECT COUNT(*) FROM payments WHERE org_id = $1', [orgId]);
+      ${where} ORDER BY p.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, [...params, limit, offset]);
+    const cnt = await pool.query(`SELECT COUNT(*) FROM payments p ${where}`, params);
     return ok(res, {
       items: rows.map(r => ({ ...r, amount_display: fmt(r.amount_kopecks) })),
       total: +cnt.rows[0].count, page, limit,

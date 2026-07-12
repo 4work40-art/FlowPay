@@ -21,8 +21,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser]     = useState<StoredUser | null>(null);
   const [checked, setChecked] = useState(false);
 
-  const isPublic = pathname === '/login' || pathname === '/register'
-    || pathname === '/forgot-password' || pathname === '/reset-password';
+  const isPublic = ['/login', '/register', '/forgot-password', '/reset-password',
+    '/', '/pricing', '/privacy', '/offer', '/accept-invite'].includes(pathname)
+    || pathname.startsWith('/public/');
 
   useEffect(() => {
     if (isPublic) { setChecked(true); return; }
@@ -77,6 +78,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span>Кабинет создателя</span>
             </Link>
           )}
+          <a
+            href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
+            className="nav-item" style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
+            <span>✉️</span>
+            <span>Поддержка</span>
+          </a>
         </nav>
         <div className="sidebar-footer">
           <Link href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, color: 'inherit', textDecoration: 'none' }}>

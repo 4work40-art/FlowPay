@@ -45,10 +45,14 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
 
 // ─── FIX #5: объект api с нужными методами ───────────────
 export const api = {
+  public: {
+    invoice: (id: string) => req(`/public/invoices/${id}`),
+  },
+
   auth: {
     login:  (email: string, password: string) =>
       req('/auth/login', { method:'POST', body:JSON.stringify({ email, password }) }),
-    register: (body: { org_name: string; email: string; password: string; name?: string }) =>
+    register: (body: { org_name: string; email: string; password: string; name?: string; consent: boolean }) =>
       req('/auth/register', { method:'POST', body:JSON.stringify(body) }),
     logout: () =>
       req('/auth/logout', { method:'POST' }),
@@ -56,6 +60,9 @@ export const api = {
       req('/auth/forgot-password', { method:'POST', body:JSON.stringify({ email }) }),
     resetPassword: (token: string, new_password: string) =>
       req('/auth/reset-password', { method:'POST', body:JSON.stringify({ token, new_password }) }),
+    inviteInfo: (token: string) => req(`/auth/invite/${token}`),
+    acceptInvite: (body: { token: string; name?: string; password: string; consent: boolean }) =>
+      req('/auth/accept-invite', { method:'POST', body:JSON.stringify(body) }),
   },
 
   dashboard: {
@@ -121,6 +128,19 @@ export const api = {
       reference?: string;
       payment_date?: string;
     }) => req('/payments', { method:'POST', body:JSON.stringify(body) }),
+    importBankStatement: async (file: File) => {
+      const token = getStoredToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(apiUrl('/payments/bank-import'), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
   },
 
   counterparties: {
@@ -147,6 +167,35 @@ export const api = {
     me: () => req('/organizations/me'),
     update: (body: { name?: string; inn?: string; kpp?: string }) =>
       req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
+    fetchLogoBlobUrl: async (): Promise<string | null> => {
+      const token = getStoredToken();
+      const res = await fetch(apiUrl('/organizations/me/logo'), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    },
+    uploadLogo: async (file: File) => {
+      const token = getStoredToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(apiUrl('/organizations/me/logo'), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
+    invites: {
+      list: () => req('/organizations/invites'),
+      create: (body: { email: string; role: string }) =>
+        req('/organizations/invites', { method:'POST', body:JSON.stringify(body) }),
+      revoke: (id: string) =>
+        req(`/organizations/invites/${id}/revoke`, { method:'POST' }),
+    },
   },
 
   billing: {
@@ -181,6 +230,18 @@ export const STATUS_LABEL: Record<string, string> = {
   DISPUTED:        'Спор',
   ARCHIVED:        'Архив',
   WRITTEN_OFF:     'Списан',
+};
+
+export const STATUS_DESCRIPTION: Record<string, string> = {
+  CREATED:         'Счёт создан, но ещё не поставлен на контроль',
+  UNDER_CONTROL:   'Вы следите за этим счётом, ждёте наступления срока оплаты',
+  PAYMENT_PENDING: 'Срок подошёл, оплата ожидается',
+  PARTIALLY_PAID:  'Оплачена часть суммы, есть остаток к оплате',
+  PAID:            'Счёт полностью оплачен',
+  OVERDUE:         'Срок оплаты прошёл, а долг не погашен',
+  DISPUTED:        'По счёту открыт спор — сумма или факт оплаты оспаривается',
+  ARCHIVED:        'Счёт оплачен и убран из активного списка',
+  WRITTEN_OFF:     'Долг списан — оплата не ожидается',
 };
 
 // P5: оранжевый для просрочки, НЕ красный

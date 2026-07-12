@@ -26,13 +26,16 @@ const registerLimiter = rateLimit({
 });
 
 router.post('/register', registerLimiter, async (req, res) => {
-  const { org_name, email, password, name } = req.body || {};
+  const { org_name, email, password, name, consent } = req.body || {};
   if (!org_name || !org_name.trim())
     return err(res, 400, 'Укажите название организации', 'VALIDATION_ERROR');
   if (!email || !EMAIL_RE.test(email))
     return err(res, 400, 'Укажите корректный email', 'VALIDATION_ERROR');
   if (!password || password.length < 8)
     return err(res, 400, 'Пароль должен содержать не менее 8 символов', 'VALIDATION_ERROR');
+  // 152-ФЗ «О персональных данных» — без явного согласия обрабатывать email/имя нельзя.
+  if (consent !== true)
+    return err(res, 400, 'Необходимо согласие на обработку персональных данных', 'CONSENT_REQUIRED');
 
   const client = await pool.connect();
   try {
@@ -51,8 +54,8 @@ router.post('/register', registerLimiter, async (req, res) => {
     const org = orgRows.rows[0];
 
     const userRows = await client.query(`
-      INSERT INTO users(email, password_hash, name, role, org_id)
-      VALUES($1, crypt($2, gen_salt('bf')), $3, 'owner', $4) RETURNING *
+      INSERT INTO users(email, password_hash, name, role, org_id, pdn_consent_at)
+      VALUES($1, crypt($2, gen_salt('bf')), $3, 'owner', $4, NOW()) RETURNING *
     `, [email.toLowerCase().trim(), password, (name || '').trim() || null, org.id]);
     const u = userRows.rows[0];
 
@@ -209,6 +212,81 @@ router.post('/reset-password', async (req, res) => {
     return ok(res, { message: 'Пароль изменён, теперь можно войти' });
   } catch (e) {
     return dbErr(res, e, '[reset-password]');
+  }
+});
+
+router.get('/invite/:token', async (req, res) => {
+  try {
+    const tokenHash = createHash('sha256').update(req.params.token).digest('hex');
+    const { rows } = await pool.query(`
+      SELECT oi.email, oi.role, o.name AS org_name
+      FROM org_invites oi JOIN organizations o ON o.id = oi.org_id
+      WHERE oi.token_hash=$1 AND oi.used_at IS NULL AND oi.expires_at > NOW()
+    `, [tokenHash]);
+    if (!rows.length) return err(res, 400, 'Приглашение недействительно или истекло', 'TOKEN_INVALID');
+    return ok(res, rows[0]);
+  } catch (e) {
+    return dbErr(res, e, '[invite lookup]');
+  }
+});
+
+router.post('/accept-invite', async (req, res) => {
+  const { token, name, password, consent } = req.body || {};
+  if (!token) return err(res, 400, 'Токен не передан', 'VALIDATION_ERROR');
+  if (!password || password.length < 8)
+    return err(res, 400, 'Пароль должен содержать не менее 8 символов', 'VALIDATION_ERROR');
+  if (consent !== true)
+    return err(res, 400, 'Необходимо согласие на обработку персональных данных', 'CONSENT_REQUIRED');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const inviteRows = await client.query(
+      `SELECT * FROM org_invites WHERE token_hash=$1 AND used_at IS NULL AND expires_at > NOW() FOR UPDATE`,
+      [tokenHash]
+    );
+    if (!inviteRows.rows.length) {
+      await client.query('ROLLBACK');
+      return err(res, 400, 'Приглашение недействительно или истекло', 'TOKEN_INVALID');
+    }
+    const invite = inviteRows.rows[0];
+
+    const existing = await client.query('SELECT id FROM users WHERE email=$1', [invite.email]);
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return err(res, 409, 'Пользователь с таким email уже зарегистрирован', 'ALREADY_EXISTS');
+    }
+
+    const userRows = await client.query(`
+      INSERT INTO users(email, password_hash, name, role, org_id, pdn_consent_at)
+      VALUES($1, crypt($2, gen_salt('bf')), $3, $4, $5, NOW()) RETURNING *
+    `, [invite.email, password, (name || '').trim() || null, invite.role, invite.org_id]);
+    const u = userRows.rows[0];
+
+    await client.query('UPDATE org_invites SET used_at = NOW() WHERE id = $1', [invite.id]);
+    await client.query('COMMIT');
+
+    const orgRows = await pool.query('SELECT name, plan FROM organizations WHERE id=$1', [invite.org_id]);
+    await audit(invite.org_id, u.id, 'org.invite_accepted', 'user', u.id, null, { email: u.email, role: u.role });
+
+    const { token: authToken } = signToken(u);
+    return ok(res, {
+      access_token: authToken,
+      refresh_token: authToken,
+      expires_in: TOKEN_TTL_S,
+      user: {
+        id: u.id, email: u.email, name: u.name, role: u.role,
+        org_id: invite.org_id, org_name: orgRows.rows[0].name, plan: orgRows.rows[0].plan,
+        is_platform_admin: false,
+      }
+    }, 201);
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    return dbErr(res, e, '[accept-invite]');
+  } finally {
+    client.release();
   }
 });
 

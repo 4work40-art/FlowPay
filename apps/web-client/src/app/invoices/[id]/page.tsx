@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { api, STATUS_LABEL, STATUS_ICON } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, STATUS_DESCRIPTION } from '@/lib/api';
 
 type Payment = {
   id: string;
@@ -100,7 +100,18 @@ export default function InvoiceDetailPage() {
           <div className="page-title">Счёт №{inv.number ?? '—'}</div>
           <div className="page-sub">{inv.counterparty_name ?? 'без контрагента'}</div>
         </div>
-        <a href="/invoices" className="btn btn-sm">← К списку</a>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              const url = `${window.location.origin}/public/invoice/${id}`;
+              navigator.clipboard?.writeText(url);
+              alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
+            }}>
+            🔗 Поделиться
+          </button>
+          <a href="/invoices" className="btn btn-sm">← К списку</a>
+        </div>
       </div>
 
       <div className="metric-grid" style={{ marginBottom: 16 }}>
@@ -124,7 +135,7 @@ export default function InvoiceDetailPage() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">
-          <span className={`status-badge status-${inv.status}`}>
+          <span className={`status-badge status-${inv.status}`} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
             {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}
           </span>
           {inv.remaining_kopecks > 0 && !['DISPUTED', 'ARCHIVED', 'WRITTEN_OFF'].includes(inv.status) && (
@@ -199,6 +210,7 @@ export default function InvoiceDetailPage() {
                 <th>Сумма</th>
                 <th>Способ</th>
                 <th>Референс</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -208,10 +220,13 @@ export default function InvoiceDetailPage() {
                   <td style={{ fontWeight: 600 }}>{p.amount_display}</td>
                   <td>{METHOD_LABEL[p.method] ?? p.method}</td>
                   <td style={{ color: 'var(--text2)' }}>{p.reference ?? '—'}</td>
+                  <td>
+                    <a className="btn btn-sm" href={`/invoices/${id}/receipt?payment=${p.id}`} target="_blank" rel="noreferrer">Акт</a>
+                  </td>
                 </tr>
               ))}
               {!inv.payments?.length && (
-                <tr><td colSpan={4} className="empty-state">Платежей ещё не было</td></tr>
+                <tr><td colSpan={5} className="empty-state">Платежей ещё не было</td></tr>
               )}
             </tbody>
           </table>

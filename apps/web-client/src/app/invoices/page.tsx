@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, STATUS_DESCRIPTION } from '@/lib/api';
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 export default function InvoicesPage() {
@@ -10,6 +10,9 @@ export default function InvoicesPage() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo,   setExportTo]   = useState('');
+  const [showExport, setShowExport] = useState(false);
 
   const load = () => {
     setLoading(true); setError('');
@@ -30,7 +33,11 @@ export default function InvoicesPage() {
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const all = await fetchAllPages<any>(api.invoices.list, status ? { status } : {});
+      const params: Record<string, string> = {};
+      if (status) params.status = status;
+      if (exportFrom) params.from = exportFrom;
+      if (exportTo) params.to = exportTo;
+      const all = await fetchAllPages<any>(api.invoices.list, params);
       downloadCsv(
         `invoices_${new Date().toISOString().slice(0, 10)}.csv`,
         ['Номер', 'Контрагент', 'Сумма, ₽', 'Оплачено, ₽', 'Остаток, ₽', 'Срок оплаты', 'Статус'],
@@ -51,11 +58,22 @@ export default function InvoicesPage() {
     <div>
       <div className="page-header">
         <div className="page-title">Счета</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-sm" disabled={exporting} onClick={exportCsv}>
-            {exporting ? 'Выгружаем…' : '⭳ Экспорт CSV'}
-          </button>
+        <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+          <button className="btn btn-sm" onClick={() => setShowExport(v => !v)}>⭳ Экспорт CSV</button>
           <a href="/invoices/new" className="btn btn-primary">+ Загрузить счёт</a>
+          {showExport && (
+            <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 14, zIndex: 10, width: 260 }}>
+              <div className="field-label" style={{ marginBottom: 8 }}>Период (необязательно)</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)} style={{ flex: 1 }} />
+                <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)} style={{ flex: 1 }} />
+              </div>
+              <button className="btn btn-primary btn-sm" style={{ width: '100%' }} disabled={exporting}
+                onClick={() => { exportCsv(); setShowExport(false); }}>
+                {exporting ? 'Выгружаем…' : 'Выгрузить'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -111,7 +129,7 @@ export default function InvoicesPage() {
                     <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
                     <td style={{ color: '#888', fontSize: 12 }}>{inv.due_date ?? '—'}</td>
                     <td>
-                      <span className={`status-badge status-${inv.status}`}>
+                      <span className={`status-badge status-${inv.status}`} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
                         {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}
                       </span>
                     </td>

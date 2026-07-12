@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "scripts": {
     "start": "node src/server.js",
-    "dev":   "node src/server.js"
+    "dev": "node src/server.js"
   },
   "dependencies": {
-    "express":        "^4.19.2",
-    "cors":           "^2.8.5",
-    "pg":             "^8.11.5",
-    "jsonwebtoken":   "^9.0.3",
-    "ioredis":        "^5.11.1",
-    "multer":         "^2.2.0",
-    "nodemailer":     "^9.0.3"
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.11.5"
   }
 }
