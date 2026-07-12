@@ -49,6 +49,9 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-sk_redis_local}@redis:6379
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env — see .env.example (openssl rand -hex 32)}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -22,6 +22,7 @@ app.use('/api/v1/counterparties', require('./routes/counterparties'));
 app.use('/api/v1/users',          require('./routes/users'));
 app.use('/api/v1/audit',          require('./routes/audit'));
 app.use('/api/v1/admin',          require('./routes/admin'));
+app.use('/api/v1/billing',        require('./routes/billing'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Маршрут ${req.method} ${req.path} не найден` } });
