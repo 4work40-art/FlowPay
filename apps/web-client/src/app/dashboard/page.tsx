@@ -109,6 +109,23 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {summary?.total_invoices === 0 && (
+        <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--blue-light, #eef4ff)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 12 }}>👋 Первые шаги в Счёт&amp;Контроль</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
+            <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>☐</span> Загрузить первый счёт
+            </a>
+            <a href="/counterparties" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>☐</span> Добавить контрагента
+            </a>
+            <a href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>☐</span> Пригласить коллегу (бухгалтера или ассистента)
+            </a>
+          </div>
+        </div>
+      )}
+
       {mode === 'quick' ? (
         <>
           {/* ─── Quick View ─────────────────── */}

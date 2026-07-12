@@ -5,6 +5,7 @@ import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
 type Org = { id: string; name: string; inn: string | null; kpp: string | null; plan: string };
+type Invite = { id: string; email: string; role: string; expires_at: string; used_at: string | null };
 
 export default function SettingsPage() {
   const [me,   setMe]   = useState<Me | null>(null);
@@ -25,16 +26,78 @@ export default function SettingsPage() {
   const [orgError, setOrgError] = useState('');
   const [orgOk,    setOrgOk]    = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState('');
+
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole,  setInviteRole]  = useState('accountant');
+  const [inviteError, setInviteError] = useState('');
+  const [inviteOk,    setInviteOk]    = useState('');
+  const [inviting,    setInviting]    = useState(false);
+
+  const loadInvites = () => {
+    if (me?.role !== 'owner') return;
+    api.organization.invites.list().then(r => setInvites(r.data?.items ?? [])).catch(() => {});
+  };
+
+  useEffect(() => {
+    api.organization.fetchLogoBlobUrl().then(setLogoUrl).catch(() => {});
+  }, []);
+
+  const onLogoSelected = async (file: File | null) => {
+    if (!file) return;
+    setLogoError('');
+    setLogoUploading(true);
+    try {
+      await api.organization.uploadLogo(file);
+      const url = await api.organization.fetchLogoBlobUrl();
+      setLogoUrl(url);
+    } catch (e: any) {
+      setLogoError(e.message || 'Не удалось загрузить логотип');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([api.users.me(), api.users.list(), api.organization.me()])
       .then(([m, t, o]) => {
         setMe(m.data); setTeam(t.data?.items ?? []);
         setOrg(o.data); setOrgName(o.data.name); setOrgInn(o.data.inn ?? ''); setOrgKpp(o.data.kpp ?? '');
+        if (m.data.role === 'owner') {
+          api.organization.invites.list().then(r => setInvites(r.data?.items ?? [])).catch(() => {});
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const sendInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInviteError(''); setInviteOk('');
+    setInviting(true);
+    try {
+      await api.organization.invites.create({ email: inviteEmail, role: inviteRole });
+      setInviteOk('Приглашение отправлено');
+      setInviteEmail('');
+      loadInvites();
+    } catch (e: any) {
+      setInviteError(e.message || 'Не удалось отправить приглашение');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const revokeInvite = async (id: string) => {
+    try {
+      await api.organization.invites.revoke(id);
+      loadInvites();
+    } catch (e: any) {
+      alert('Не удалось отозвать: ' + e.message);
+    }
+  };
 
   const saveOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +146,18 @@ export default function SettingsPage() {
           <div className="card-body">
             {me?.role === 'owner' ? (
               <form onSubmit={saveOrg}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  {logoUrl
+                    ? <img src={logoUrl} alt="Логотип" style={{ width: 48, height: 48, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6 }} />
+                    : <div style={{ width: 48, height: 48, borderRadius: 6, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#bbb' }}>🏢</div>}
+                  <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
+                    {logoUploading ? 'Загружаем…' : 'Загрузить логотип'}
+                    <input type="file" accept="image/png,image/jpeg,image/svg+xml" style={{ display: 'none' }} disabled={logoUploading}
+                      onChange={e => { onLogoSelected(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                  </label>
+                </div>
+                {logoError && <div className="error-box" style={{ marginBottom: 12 }}>{logoError}</div>}
+
                 {orgError && <div className="error-box" style={{ marginBottom: 12 }}>{orgError}</div>}
                 {orgOk && <div style={{ background: 'var(--green-light)', color: 'var(--green-dark)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{orgOk}</div>}
 
@@ -182,9 +257,42 @@ export default function SettingsPage() {
             </tbody>
           </table>
         </div>
-        <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
-          <span className="field-hint">Приглашение новых участников появится в одном из следующих обновлений.</span>
-        </div>
+        {me?.role === 'owner' && (
+          <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
+            <form onSubmit={sendInvite} style={{ display: 'flex', gap: 8, marginBottom: invites.length ? 16 : 0, flexWrap: 'wrap' }}>
+              {inviteError && <div className="error-box" style={{ flexBasis: '100%' }}>{inviteError}</div>}
+              {inviteOk && <div style={{ flexBasis: '100%', background: 'var(--green-light)', color: 'var(--green-dark)', padding: '6px 10px', borderRadius: 6, fontSize: 13 }}>{inviteOk}</div>}
+              <input type="email" required placeholder="email коллеги" value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+              <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+                <option value="accountant">Бухгалтер</option>
+                <option value="readonly">Только чтение</option>
+              </select>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={inviting}>
+                {inviting ? 'Отправляем…' : '+ Пригласить'}
+              </button>
+            </form>
+
+            {invites.filter(i => !i.used_at).length > 0 && (
+              <table style={{ width: '100%', fontSize: 13 }}>
+                <tbody>
+                  {invites.filter(i => !i.used_at).map(inv => (
+                    <tr key={inv.id}>
+                      <td style={{ padding: '4px 0' }}>{inv.email}</td>
+                      <td style={{ color: 'var(--text2)' }}>{ROLE_LABEL[inv.role] ?? inv.role}</td>
+                      <td style={{ color: 'var(--text2)', fontSize: 12 }}>
+                        до {new Date(inv.expires_at).toLocaleDateString('ru-RU')}
+                      </td>
+                      <td>
+                        <button className="btn btn-sm" onClick={() => revokeInvite(inv.id)}>Отозвать</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

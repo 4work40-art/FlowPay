@@ -12,6 +12,12 @@ export default function PaymentsPage() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo,   setExportTo]   = useState('');
+  const [showExport, setShowExport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [importError, setImportError] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -26,10 +32,28 @@ export default function PaymentsPage() {
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const onImportFile = async (file: File | null) => {
+    if (!file) return;
+    setImportError(''); setImportResult(null);
+    setImporting(true);
+    try {
+      const res = await api.payments.importBankStatement(file);
+      setImportResult(res.data);
+      load();
+    } catch (e: any) {
+      setImportError(e.message || 'Не удалось импортировать выписку');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const exportCsv = async () => {
     setExporting(true);
     try {
-      const all = await fetchAllPages<any>(api.payments.list);
+      const params: Record<string, string> = {};
+      if (exportFrom) params.from = exportFrom;
+      if (exportTo) params.to = exportTo;
+      const all = await fetchAllPages<any>(api.payments.list, params);
       downloadCsv(
         `payments_${new Date().toISOString().slice(0, 10)}.csv`,
         ['Дата', 'Счёт', 'Контрагент', 'Сумма, ₽', 'Способ', 'Референс'],
@@ -46,10 +70,45 @@ export default function PaymentsPage() {
     <div>
       <div className="page-header">
         <div className="page-title">Платежи</div>
-        <button className="btn btn-sm" disabled={!total || exporting} onClick={exportCsv}>
-          {exporting ? 'Выгружаем…' : '⭳ Экспорт CSV'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
+            {importing ? 'Импортируем…' : '📥 Импорт выписки'}
+            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} disabled={importing}
+              onChange={e => { onImportFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+          </label>
+        <div style={{ position: 'relative' }}>
+          <button className="btn btn-sm" disabled={!total} onClick={() => setShowExport(v => !v)}>⭳ Экспорт CSV</button>
+          {showExport && (
+            <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 14, zIndex: 10, width: 260 }}>
+              <div className="field-label" style={{ marginBottom: 8 }}>Период (необязательно)</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)} style={{ flex: 1 }} />
+                <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)} style={{ flex: 1 }} />
+              </div>
+              <button className="btn btn-primary btn-sm" style={{ width: '100%' }} disabled={exporting}
+                onClick={() => { exportCsv(); setShowExport(false); }}>
+                {exporting ? 'Выгружаем…' : 'Выгрузить'}
+              </button>
+            </div>
+          )}
+        </div>
+        </div>
       </div>
+
+      {importError && <div className="error-box" style={{ marginBottom: 12 }}>{importError}</div>}
+      {importResult && (
+        <div className="card" style={{ marginBottom: 16, padding: 14, fontSize: 13 }}>
+          Импорт завершён: сопоставлено платежей — <strong>{importResult.matched_count}</strong>,
+          не удалось сопоставить — <strong>{importResult.unmatched_count}</strong>.
+          {importResult.unmatched_count > 0 && (
+            <ul style={{ marginTop: 8, paddingLeft: 18, color: 'var(--text2)' }}>
+              {importResult.unmatched.slice(0, 10).map((u: any, i: number) => (
+                <li key={i}>{u.raw} — {u.reason}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="error-box">

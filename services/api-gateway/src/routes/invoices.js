@@ -9,6 +9,8 @@ const router = express.Router();
 router.get('/', authMiddleware, async (req, res) => {
   const orgId  = req.user.org_id;
   const status = req.query.status;
+  const from   = req.query.from; // YYYY-MM-DD, по invoice_date
+  const to     = req.query.to;
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -17,6 +19,8 @@ router.get('/', authMiddleware, async (req, res) => {
     const params = [orgId];
     let where = 'WHERE i.org_id = $1';
     if (status) { params.push(status.toUpperCase()); where += ` AND i.status = $${params.length}`; }
+    if (from)   { params.push(from); where += ` AND i.created_at >= $${params.length}`; }
+    if (to)     { params.push(to);   where += ` AND i.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
 
     const { rows } = await pool.query(`
       SELECT i.*, c.name AS counterparty_name,
@@ -99,10 +103,21 @@ router.post('/', authMiddleware, async (req, res) => {
         return err(res, 400, 'Контрагент не найден в вашей организации', 'VALIDATION_ERROR');
     }
 
+    let finalNumber = number || null;
+    if (!finalNumber) {
+      // Атомарно берём и увеличиваем счётчик организации, чтобы два
+      // одновременных запроса без ручного номера не получили один и тот же.
+      const seqRows = await pool.query(
+        `UPDATE organizations SET next_invoice_seq = next_invoice_seq + 1 WHERE id=$1 RETURNING next_invoice_seq - 1 AS seq`,
+        [orgId]
+      );
+      finalNumber = String(seqRows.rows[0].seq);
+    }
+
     const { rows } = await pool.query(`
       INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, notes, status, created_by)
       VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7) RETURNING *
-    `, [orgId, counterparty_id || null, number || null, amount_kopecks, due_date || null, notes || null, req.user.id]);
+    `, [orgId, counterparty_id || null, finalNumber, amount_kopecks, due_date || null, notes || null, req.user.id]);
 
     await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);

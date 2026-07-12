@@ -13,6 +13,8 @@ CREATE TABLE organizations (
   inn VARCHAR(12), kpp VARCHAR(9),
   plan plan_type NOT NULL DEFAULT 'free',
   invoice_limit INTEGER NOT NULL DEFAULT 5,
+  next_invoice_seq INTEGER NOT NULL DEFAULT 1,
+  logo_path VARCHAR(500),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -27,6 +29,7 @@ CREATE TABLE users (
   role user_role NOT NULL DEFAULT 'owner',
   org_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
   trust_score INTEGER NOT NULL DEFAULT 50 CHECK (trust_score BETWEEN 0 AND 100),
+  pdn_consent_at TIMESTAMPTZ,
   is_platform_admin BOOLEAN NOT NULL DEFAULT false,
   is_active BOOLEAN NOT NULL DEFAULT true,
   last_login_at TIMESTAMPTZ,
@@ -125,6 +128,20 @@ CREATE TABLE documents (
 CREATE INDEX ON documents(org_id);
 CREATE INDEX ON documents(invoice_id);
 
+CREATE TABLE org_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL,
+  role user_role NOT NULL DEFAULT 'accountant',
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON org_invites(org_id);
+
 CREATE TABLE password_reset_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -157,7 +174,8 @@ CREATE INDEX ON audit_logs(action);
 -- Seed: только организация и логин-пользователь.
 -- Название организации можно поменять через Adminer (таблица organizations) —
 -- логин/пароль ниже не трогаем, чтобы не сломать текущий доступ.
-INSERT INTO organizations VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',5,true,NOW(),NOW());
+INSERT INTO organizations (id,name,inn,kpp,plan,invoice_limit,is_active,created_at,updated_at)
+VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',5,true,NOW(),NOW());
 
 INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score,is_platform_admin) VALUES
   ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85,true);
