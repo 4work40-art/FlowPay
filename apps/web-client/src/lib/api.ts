@@ -44,6 +44,8 @@ export const api = {
   auth: {
     login:  (email: string, password: string) =>
       req('/auth/login', { method:'POST', body:JSON.stringify({ email, password }) }),
+    register: (body: { org_name: string; email: string; password: string; name?: string }) =>
+      req('/auth/register', { method:'POST', body:JSON.stringify(body) }),
     logout: () =>
       req('/auth/logout', { method:'POST' }),
   },

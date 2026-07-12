@@ -130,6 +130,61 @@ app.get('/health', async (req, res) => {
 });
 
 // ─── Auth ─────────────────────────────────────────────────
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+app.post('/api/v1/auth/register', async (req, res) => {
+  const { org_name, email, password, name } = req.body || {};
+  if (!org_name || !org_name.trim())
+    return err(res, 400, 'Укажите название организации', 'VALIDATION_ERROR');
+  if (!email || !EMAIL_RE.test(email))
+    return err(res, 400, 'Укажите корректный email', 'VALIDATION_ERROR');
+  if (!password || password.length < 8)
+    return err(res, 400, 'Пароль должен содержать не менее 8 символов', 'VALIDATION_ERROR');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const existing = await client.query('SELECT id FROM users WHERE email=$1', [email.toLowerCase().trim()]);
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return err(res, 409, 'Пользователь с таким email уже зарегистрирован', 'ALREADY_EXISTS');
+    }
+
+    const orgRows = await client.query(
+      `INSERT INTO organizations(name, plan, invoice_limit) VALUES($1,'free',5) RETURNING *`,
+      [org_name.trim()]
+    );
+    const org = orgRows.rows[0];
+
+    const userRows = await client.query(`
+      INSERT INTO users(email, password_hash, name, role, org_id)
+      VALUES($1, crypt($2, gen_salt('bf')), $3, 'owner', $4) RETURNING *
+    `, [email.toLowerCase().trim(), password, (name || '').trim() || null, org.id]);
+    const u = userRows.rows[0];
+
+    await client.query('COMMIT');
+    await audit(org.id, u.id, 'org.registered', 'organization', org.id, null, { org_name: org.name, email: u.email });
+
+    const { token } = signToken(u);
+    return ok(res, {
+      access_token: token,
+      refresh_token: token,
+      expires_in: TOKEN_TTL_S,
+      user: {
+        id: u.id, email: u.email, name: u.name, role: u.role,
+        org_id: org.id, org_name: org.name, plan: org.plan,
+        trust_score: u.trust_score, is_platform_admin: false,
+      }
+    }, 201);
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    return dbErr(res, e, '[register]');
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/v1/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
