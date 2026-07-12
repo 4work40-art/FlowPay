@@ -52,6 +52,10 @@ export const api = {
       req('/auth/register', { method:'POST', body:JSON.stringify(body) }),
     logout: () =>
       req('/auth/logout', { method:'POST' }),
+    forgotPassword: (email: string) =>
+      req('/auth/forgot-password', { method:'POST', body:JSON.stringify({ email }) }),
+    resetPassword: (token: string, new_password: string) =>
+      req('/auth/reset-password', { method:'POST', body:JSON.stringify({ token, new_password }) }),
   },
 
   dashboard: {

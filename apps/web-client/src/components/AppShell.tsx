@@ -21,7 +21,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser]     = useState<StoredUser | null>(null);
   const [checked, setChecked] = useState(false);
 
-  const isPublic = pathname === '/login' || pathname === '/register';
+  const isPublic = pathname === '/login' || pathname === '/register'
+    || pathname === '/forgot-password' || pathname === '/reset-password';
 
   useEffect(() => {
     if (isPublic) { setChecked(true); return; }

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { downloadCsv } from '@/lib/csv';
+import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 const PAGE_SIZE = 20;
 
@@ -11,6 +11,7 @@ export default function PaymentsPage() {
   const [page,     setPage]     = useState(1);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -25,19 +26,28 @@ export default function PaymentsPage() {
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllPages<any>(api.payments.list);
+      downloadCsv(
+        `payments_${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Дата', 'Счёт', 'Контрагент', 'Сумма, ₽', 'Способ', 'Референс'],
+        all.map(p => [p.payment_date, p.invoice_number ?? '', p.counterparty_name ?? '', (p.amount_kopecks / 100).toFixed(2), p.method ?? '', p.reference ?? ''])
+      );
+    } catch (e: any) {
+      alert('Не удалось выгрузить CSV: ' + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div className="page-title">Платежи</div>
-        <button
-          className="btn btn-sm"
-          disabled={!payments.length}
-          onClick={() => downloadCsv(
-            `payments_${new Date().toISOString().slice(0, 10)}.csv`,
-            ['Дата', 'Счёт', 'Контрагент', 'Сумма, ₽', 'Способ', 'Референс'],
-            payments.map(p => [p.payment_date, p.invoice_number ?? '', p.counterparty_name ?? '', (p.amount_kopecks / 100).toFixed(2), p.method ?? '', p.reference ?? ''])
-          )}>
-          ⭳ Экспорт CSV
+        <button className="btn btn-sm" disabled={!total || exporting} onClick={exportCsv}>
+          {exporting ? 'Выгружаем…' : '⭳ Экспорт CSV'}
         </button>
       </div>
 

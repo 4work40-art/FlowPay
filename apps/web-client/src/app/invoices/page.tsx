@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, STATUS_LABEL, STATUS_ICON } from '@/lib/api';
-import { downloadCsv } from '@/lib/csv';
+import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -9,6 +9,7 @@ export default function InvoicesPage() {
   const [query,    setQuery]    = useState('');
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const load = () => {
     setLoading(true); setError('');
@@ -26,23 +27,33 @@ export default function InvoicesPage() {
         String(inv.counterparty_name ?? '').toLowerCase().includes(query.toLowerCase()))
     : invoices;
 
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const all = await fetchAllPages<any>(api.invoices.list, status ? { status } : {});
+      downloadCsv(
+        `invoices_${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Номер', 'Контрагент', 'Сумма, ₽', 'Оплачено, ₽', 'Остаток, ₽', 'Срок оплаты', 'Статус'],
+        all.map(inv => [
+          inv.number ?? '', inv.counterparty_name ?? '',
+          (inv.amount_kopecks / 100).toFixed(2), (inv.paid_kopecks / 100).toFixed(2), (inv.remaining_kopecks / 100).toFixed(2),
+          inv.due_date ?? '', STATUS_LABEL[inv.status] ?? inv.status,
+        ])
+      );
+    } catch (e: any) {
+      alert('Не удалось выгрузить CSV: ' + e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div className="page-title">Счета</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-sm"
-            onClick={() => downloadCsv(
-              `invoices_${new Date().toISOString().slice(0, 10)}.csv`,
-              ['Номер', 'Контрагент', 'Сумма, ₽', 'Оплачено, ₽', 'Остаток, ₽', 'Срок оплаты', 'Статус'],
-              filtered.map(inv => [
-                inv.number ?? '', inv.counterparty_name ?? '',
-                (inv.amount_kopecks / 100).toFixed(2), (inv.paid_kopecks / 100).toFixed(2), (inv.remaining_kopecks / 100).toFixed(2),
-                inv.due_date ?? '', STATUS_LABEL[inv.status] ?? inv.status,
-              ])
-            )}>
-            ⭳ Экспорт CSV
+          <button className="btn btn-sm" disabled={exporting} onClick={exportCsv}>
+            {exporting ? 'Выгружаем…' : '⭳ Экспорт CSV'}
           </button>
           <a href="/invoices/new" className="btn btn-primary">+ Загрузить счёт</a>
         </div>

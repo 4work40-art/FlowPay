@@ -34,6 +34,11 @@ NEXT_PUBLIC_API_URL=http://${SERVER_IP}:3001/api/v1
 APP_BASE_URL=http://${SERVER_IP}:3000
 YOOKASSA_SHOP_ID=
 YOOKASSA_SECRET_KEY=
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 ENVEOF
 fi
 
@@ -53,6 +58,7 @@ docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgr
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_multi_tenancy.sql || true
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_billing.sql || true
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_documents.sql || true
+docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_password_reset.sql || true
 
 chmod +x backup.sh
 CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"
