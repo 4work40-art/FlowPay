@@ -103,6 +103,19 @@ export const api = {
     organizations: () => req('/admin/organizations'),
   },
 
+  organization: {
+    me: () => req('/organizations/me'),
+    update: (body: { name?: string; inn?: string; kpp?: string }) =>
+      req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
+  },
+
+  billing: {
+    plans: () => req('/billing/plans'),
+    subscription: () => req('/billing/subscription'),
+    checkout: (plan: string) =>
+      req('/billing/checkout', { method:'POST', body:JSON.stringify({ plan }) }),
+  },
+
   audit: {
     logs: (params: Record<string, string> = {}) =>
       req(`/audit/logs?${new URLSearchParams(params)}`),
