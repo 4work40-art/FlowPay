@@ -18,9 +18,14 @@
 - Экран управления пользователями (список, смена роли, деактивация)
 
 ## Этап 3 — самостоятельная регистрация организаций (multi-tenant)
-- Форма регистрации новой организации + владельца (сейчас логин жёстко привязан к одному demo-аккаунту)
-- Применить существующие лимиты (`plan`, `invoice_limit` в таблице `organizations`) — блокировать создание счетов сверх лимита бесплатного тарифа
-- Разделение биллинга по тарифам (free/pro/business/enterprise — enum уже есть в схеме)
+- ✅ Форма регистрации новой организации + владельца (`POST /api/v1/auth/register`, страница `/register`)
+- ✅ Free-тариф — 5 счетов (`invoice_limit` default), лимит уже блокирует создание счетов сверх лимита
+- ✅ Модуляризация backend: `server.js` (718 строк) разбит на `lib/` (db, auth, http, audit) и `routes/` (auth, dashboard, invoices, payments, counterparties, users, audit, admin) — внешний API-контракт не менялся
+- ✅ Биллинг через ЮKassa: `POST /api/v1/billing/checkout` создаёт платёж, `POST /api/v1/billing/webhook`
+  подтверждает его (статус всегда перепроверяется через ЮKassa API, тело webhook не считается источником истины)
+  и апгрейдит тариф + `invoice_limit` организации. Таблицы `subscriptions`, `billing_transactions`
+  (`infra/postgres/migration_billing.sql`). Требует env `YOOKASSA_SHOP_ID` / `YOOKASSA_SECRET_KEY` — без них
+  чекаут возвращает 503 `BILLING_NOT_CONFIGURED`, не ломая остальной API.
 
 ## Этап 4 — надёжность и эксплуатация
 - Бэкапы БД — не только локально: выгрузка в S3-хранилище TimeWeb (offsite), проверка восстановления по расписанию

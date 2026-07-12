@@ -12,7 +12,7 @@ CREATE TABLE organizations (
   name VARCHAR(255) NOT NULL,
   inn VARCHAR(12), kpp VARCHAR(9),
   plan plan_type NOT NULL DEFAULT 'free',
-  invoice_limit INTEGER NOT NULL DEFAULT 10,
+  invoice_limit INTEGER NOT NULL DEFAULT 5,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -84,6 +84,32 @@ CREATE TABLE payments (
 CREATE INDEX ON payments(invoice_id);
 CREATE INDEX ON payments(org_id);
 
+CREATE TABLE subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
+  plan plan_type NOT NULL DEFAULT 'free',
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  current_period_end TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE billing_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  provider VARCHAR(20) NOT NULL DEFAULT 'yookassa',
+  provider_payment_id VARCHAR(255) UNIQUE,
+  plan plan_type NOT NULL,
+  amount_kopecks BIGINT NOT NULL CHECK (amount_kopecks > 0),
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  confirmed_at TIMESTAMPTZ
+);
+
+CREATE INDEX ON billing_transactions(org_id);
+CREATE INDEX ON billing_transactions(status);
+
 CREATE TABLE audit_logs (
   id BIGSERIAL PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -105,7 +131,7 @@ CREATE INDEX ON audit_logs(action);
 -- Seed: только организация и логин-пользователь.
 -- Название организации можно поменять через Adminer (таблица organizations) —
 -- логин/пароль ниже не трогаем, чтобы не сломать текущий доступ.
-INSERT INTO organizations VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',10,true,NOW(),NOW());
+INSERT INTO organizations VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',5,true,NOW(),NOW());
 
 INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score,is_platform_admin) VALUES
   ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85,true);

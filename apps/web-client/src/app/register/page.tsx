@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { setSession } from '@/lib/auth';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
+  const [orgName,  setOrgName]  = useState('');
+  const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
@@ -17,11 +19,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.auth.login(email, password);
+      const res = await api.auth.register({ org_name: orgName, email, password, name });
       setSession(res.data.access_token, res.data.user);
       router.replace('/dashboard');
     } catch (e: any) {
-      setError(e.message || 'Не удалось войти');
+      setError(e.message || 'Не удалось зарегистрироваться');
     } finally {
       setLoading(false);
     }
@@ -32,19 +34,38 @@ export default function LoginPage() {
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: '#f5f6f8',
     }}>
-      <form onSubmit={submit} className="card" style={{ width: 340, padding: 28 }}>
+      <form onSubmit={submit} className="card" style={{ width: 360, padding: 28 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 22, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
-          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Вход в систему</div>
+          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Регистрация организации</div>
         </div>
 
         {error && (
           <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>
         )}
 
-        <label htmlFor="login-email" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Email</label>
+        <label htmlFor="reg-org" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Название организации</label>
         <input
-          id="login-email"
+          id="reg-org"
+          type="text"
+          required
+          value={orgName}
+          onChange={e => setOrgName(e.target.value)}
+          style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
+        />
+
+        <label htmlFor="reg-name" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Ваше имя</label>
+        <input
+          id="reg-name"
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
+        />
+
+        <label htmlFor="reg-email" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Email</label>
+        <input
+          id="reg-email"
           type="email"
           required
           value={email}
@@ -52,22 +73,23 @@ export default function LoginPage() {
           style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
         />
 
-        <label htmlFor="login-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль</label>
+        <label htmlFor="reg-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль (минимум 8 символов)</label>
         <input
-          id="login-password"
+          id="reg-password"
           type="password"
           required
+          minLength={8}
           value={password}
           onChange={e => setPassword(e.target.value)}
           style={{ width: '100%', padding: '8px 10px', marginBottom: 18, border: '1px solid #ddd', borderRadius: 6 }}
         />
 
         <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', marginBottom: 12 }}>
-          {loading ? 'Входим…' : 'Войти'}
+          {loading ? 'Создаём…' : 'Зарегистрироваться'}
         </button>
 
         <div style={{ textAlign: 'center', fontSize: 13 }}>
-          Нет аккаунта? <Link href="/register">Зарегистрировать организацию</Link>
+          Уже есть аккаунт? <Link href="/login">Войти</Link>
         </div>
       </form>
     </div>
