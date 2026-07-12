@@ -4,10 +4,12 @@ import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string; trust_score: number };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
+type Org = { id: string; name: string; inn: string | null; kpp: string | null; plan: string };
 
 export default function SettingsPage() {
   const [me,   setMe]   = useState<Me | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
+  const [org,  setOrg]  = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [current, setCurrent] = useState('');
@@ -17,12 +19,37 @@ export default function SettingsPage() {
   const [pwOk,    setPwOk]    = useState('');
   const [saving,  setSaving]  = useState(false);
 
+  const [orgName, setOrgName] = useState('');
+  const [orgInn,  setOrgInn]  = useState('');
+  const [orgKpp,  setOrgKpp]  = useState('');
+  const [orgError, setOrgError] = useState('');
+  const [orgOk,    setOrgOk]    = useState('');
+  const [orgSaving, setOrgSaving] = useState(false);
+
   useEffect(() => {
-    Promise.all([api.users.me(), api.users.list()])
-      .then(([m, t]) => { setMe(m.data); setTeam(t.data?.items ?? []); })
+    Promise.all([api.users.me(), api.users.list(), api.organization.me()])
+      .then(([m, t, o]) => {
+        setMe(m.data); setTeam(t.data?.items ?? []);
+        setOrg(o.data); setOrgName(o.data.name); setOrgInn(o.data.inn ?? ''); setOrgKpp(o.data.kpp ?? '');
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  const saveOrg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOrgError(''); setOrgOk('');
+    setOrgSaving(true);
+    try {
+      const res = await api.organization.update({ name: orgName, inn: orgInn || undefined, kpp: orgKpp || undefined });
+      setOrg(res.data);
+      setOrgOk('Сохранено');
+    } catch (e: any) {
+      setOrgError(e.message || 'Не удалось сохранить');
+    } finally {
+      setOrgSaving(false);
+    }
+  };
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,18 +81,47 @@ export default function SettingsPage() {
         <div className="card">
           <div className="card-header">Организация</div>
           <div className="card-body">
-            <div style={{ marginBottom: 10 }}>
-              <div className="field-label">Название</div>
-              <div style={{ fontWeight: 500 }}>{me?.org_name}</div>
-            </div>
-            <div style={{ marginBottom: 10 }}>
-              <div className="field-label">Тариф</div>
-              <div style={{ fontWeight: 500 }}>{PLAN_LABEL[me?.plan ?? ''] ?? me?.plan}</div>
-            </div>
-            <div>
-              <div className="field-label">Ваша роль</div>
-              <div style={{ fontWeight: 500 }}>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</div>
-            </div>
+            {me?.role === 'owner' ? (
+              <form onSubmit={saveOrg}>
+                {orgError && <div className="error-box" style={{ marginBottom: 12 }}>{orgError}</div>}
+                {orgOk && <div style={{ background: 'var(--green-light)', color: 'var(--green-dark)', padding: '8px 12px', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>{orgOk}</div>}
+
+                <div className="form-group">
+                  <label className="field-label">Название</label>
+                  <input type="text" required value={orgName} onChange={e => setOrgName(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">ИНН</label>
+                  <input type="text" value={orgInn} onChange={e => setOrgInn(e.target.value)} placeholder="10 или 12 цифр" />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">КПП</label>
+                  <input type="text" value={orgKpp} onChange={e => setOrgKpp(e.target.value)} placeholder="9 цифр" />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div className="field-label">Тариф</div>
+                  <div style={{ fontWeight: 500 }}>{PLAN_LABEL[org?.plan ?? ''] ?? org?.plan}</div>
+                </div>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={orgSaving}>
+                  {orgSaving ? 'Сохраняем…' : 'Сохранить'}
+                </button>
+              </form>
+            ) : (
+              <>
+                <div style={{ marginBottom: 10 }}>
+                  <div className="field-label">Название</div>
+                  <div style={{ fontWeight: 500 }}>{me?.org_name}</div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div className="field-label">Тариф</div>
+                  <div style={{ fontWeight: 500 }}>{PLAN_LABEL[me?.plan ?? ''] ?? me?.plan}</div>
+                </div>
+                <div>
+                  <div className="field-label">Ваша роль</div>
+                  <div style={{ fontWeight: 500 }}>{ROLE_LABEL[me?.role ?? ''] ?? me?.role}</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

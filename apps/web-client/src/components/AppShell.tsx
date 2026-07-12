@@ -11,6 +11,7 @@ const NAV = [
   { href: '/payments',       icon: '💳', label: 'Платежи'      },
   { href: '/counterparties', icon: '🤝', label: 'Контрагенты'  },
   { href: '/analytics',      icon: '📈', label: 'Аналитика'    },
+  { href: '/billing',        icon: '💰', label: 'Тариф'        },
   { href: '/settings',       icon: '⚙️', label: 'Настройки'    },
 ];
 
@@ -20,8 +21,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [user, setUser]     = useState<StoredUser | null>(null);
   const [checked, setChecked] = useState(false);
 
+  const isPublic = pathname === '/login' || pathname === '/register';
+
   useEffect(() => {
-    if (pathname === '/login') { setChecked(true); return; }
+    if (isPublic) { setChecked(true); return; }
     const token = getToken();
     if (!token) {
       router.replace('/login');
@@ -34,9 +37,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     setUser(stored);
     setChecked(true);
-  }, [pathname, router]);
+  }, [pathname, router, isPublic]);
 
-  if (pathname === '/login') return <>{children}</>;
+  if (isPublic) return <>{children}</>;
 
   if (!checked) {
     return <div className="loading">⏳ Проверка сессии...</div>;
