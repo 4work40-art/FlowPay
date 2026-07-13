@@ -8,7 +8,14 @@ type Overview = {
   users: number;
   invoices: number;
   payments: number;
-  total_debt: { display: string };
+  paying_organizations: number;
+  new_orgs_30d: number;
+  active_orgs_30d: number;
+  conversion_pct: number;
+  active_pct: number;
+  mrr: { display: string };
+  revenue_month: { display: string };
+  revenue_total: { display: string };
   plan_distribution: Record<string, number>;
   growth: { week: string; organizations: number }[];
   recent_activity: { id: number; timestamp: string; action: string; resource: string; resource_id: string | null; status: string; org_name: string | null }[];
@@ -31,8 +38,8 @@ export default function AdminOverviewPage() {
   if (!data) return null;
 
   const maxGrowth = Math.max(1, ...data.growth.map(g => g.organizations));
-  const coverage = data.invoices > 0 ? Math.min(100, Math.round((data.payments / data.invoices) * 100)) : 0;
-  const outstanding = 100 - coverage;
+  const conversion = Math.min(100, data.conversion_pct);
+  const activePct = Math.min(100, data.active_pct);
   const gaugeDeg = (pct: number) => `${pct * 1.8}deg`;
   const gaugeRot = (pct: number) => `${pct * 1.8 - 90}deg`;
 
@@ -49,24 +56,27 @@ export default function AdminOverviewPage() {
 
       <div className="metric-grid">
         <div className="metric-card feature">
-          <div className="metric-label">Организаций</div>
-          <div className="metric-value">{data.organizations}</div>
+          <div className="metric-label">MRR — доход в месяц по тарифам</div>
+          <div className="metric-value">{data.mrr.display}</div>
+        </div>
+        <div className="metric-card green">
+          <div className="metric-label">Доход за текущий месяц</div>
+          <div className="metric-value">{data.revenue_month.display}</div>
+          <div className="metric-hint">всего получено: {data.revenue_total.display}</div>
         </div>
         <div className="metric-card purple">
-          <div className="metric-label">Пользователей</div>
-          <div className="metric-value">{data.users}</div>
+          <div className="metric-label">Организаций</div>
+          <div className="metric-value">{data.organizations}</div>
+          <div className="metric-hint">+{data.new_orgs_30d} за 30 дней · {data.users} пользователей</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Счетов всего</div>
+          <div className="metric-label">Платящих организаций</div>
+          <div className="metric-value">{data.paying_organizations}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Использование сервиса</div>
           <div className="metric-value">{data.invoices}</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">Платежей всего</div>
-          <div className="metric-value">{data.payments}</div>
-        </div>
-        <div className="metric-card red">
-          <div className="metric-label">Долг под контролем платформы</div>
-          <div className="metric-value">{data.total_debt.display}</div>
+          <div className="metric-hint">счетов · {data.payments} платежей проведено</div>
         </div>
       </div>
 
@@ -92,28 +102,28 @@ export default function AdminOverviewPage() {
         </div>
 
         <div className="card">
-          <div className="card-header">Здоровье сборов платформы</div>
+          <div className="card-header">Здоровье бизнеса</div>
           <div className="card-body">
             <div className="gauge-wrap" style={{ justifyContent: 'space-around', width: '100%' }}>
               <div style={{ textAlign: 'center' }}>
                 <div className="gauge" style={{ width: 140, height: 78, margin: '0 auto' }}>
                   <div className="gauge-track" style={{ width: 140, height: 140 }} />
-                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(coverage) }} />
+                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(conversion) }} />
                   <div className="gauge-mask" style={{ top: 11, left: 11, width: 118, height: 118 }} />
-                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(coverage) }} />
+                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(conversion) }} />
                 </div>
-                <div className="metric-value tnum" style={{ fontSize: 17 }}>{coverage}%</div>
-                <div className="metric-hint">Платежей на счёт</div>
+                <div className="metric-value tnum" style={{ fontSize: 17 }}>{conversion}%</div>
+                <div className="metric-hint">Конверсия в платящих</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div className="gauge" style={{ width: 140, height: 78, margin: '0 auto' }}>
                   <div className="gauge-track" style={{ width: 140, height: 140 }} />
-                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(outstanding) }} />
+                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(activePct) }} />
                   <div className="gauge-mask" style={{ top: 11, left: 11, width: 118, height: 118 }} />
-                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(outstanding) }} />
+                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(activePct) }} />
                 </div>
-                <div className="metric-value tnum" style={{ fontSize: 17 }}>{outstanding}%</div>
-                <div className="metric-hint">Не закрыто платежами</div>
+                <div className="metric-value tnum" style={{ fontSize: 17 }}>{activePct}%</div>
+                <div className="metric-hint">Активны за 30 дней ({data.active_orgs_30d} орг.)</div>
               </div>
             </div>
           </div>

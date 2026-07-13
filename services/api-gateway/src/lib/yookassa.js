@@ -13,7 +13,34 @@ function isConfigured() {
   return !!(SHOP_ID && SECRET);
 }
 
-async function createPayment({ idempotenceKey, amountKopecks, description, returnUrl, metadata }) {
+// Ставка НДС в чеке (54-ФЗ): 1 = без НДС (УСН). Меняется через env при
+// смене системы налогообложения. Справочник кодов — в доках ЮKassa.
+const VAT_CODE = Number(process.env.YOOKASSA_VAT_CODE || 1);
+
+async function createPayment({ idempotenceKey, amountKopecks, description, returnUrl, metadata, receiptEmail }) {
+  const amount = { value: (amountKopecks / 100).toFixed(2), currency: 'RUB' };
+  const body = {
+    amount,
+    capture: true,
+    confirmation: { type: 'redirect', return_url: returnUrl },
+    description,
+    metadata,
+  };
+  // 54-ФЗ: фискальный чек покупателю подписки. ЮKassa формирует чек сама
+  // (фискализация «под ключ»), нам достаточно передать receipt.
+  if (receiptEmail) {
+    body.receipt = {
+      customer: { email: receiptEmail },
+      items: [{
+        description: description.slice(0, 128),
+        quantity: '1.00',
+        amount,
+        vat_code: VAT_CODE,
+        payment_subject: 'service',
+        payment_mode: 'full_payment',
+      }],
+    };
+  }
   const res = await fetch(`${API_BASE}/payments`, {
     method: 'POST',
     headers: {
@@ -21,13 +48,7 @@ async function createPayment({ idempotenceKey, amountKopecks, description, retur
       'Idempotence-Key': idempotenceKey,
       Authorization: authHeader(),
     },
-    body: JSON.stringify({
-      amount: { value: (amountKopecks / 100).toFixed(2), currency: 'RUB' },
-      capture: true,
-      confirmation: { type: 'redirect', return_url: returnUrl },
-      description,
-      metadata,
-    }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (!res.ok) {

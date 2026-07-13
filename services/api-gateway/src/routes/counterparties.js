@@ -3,6 +3,7 @@ const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
+const { validateRequisites } = require('../lib/inn');
 
 const router = express.Router();
 
@@ -29,6 +30,8 @@ router.post('/', authMiddleware, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type } = req.body || {};
   if (!name || !name.trim())
     return err(res, 400, 'Укажите название', 'VALIDATION_ERROR');
+  const reqError = validateRequisites({ inn, kpp });
+  if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
 
   try {
     const { rows } = await pool.query(`
@@ -46,6 +49,8 @@ router.post('/', authMiddleware, async (req, res) => {
 
 router.patch('/:id', authMiddleware, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type, is_active } = req.body || {};
+  const reqError = validateRequisites({ inn, kpp });
+  if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
   try {
     const existing = await pool.query('SELECT * FROM counterparties WHERE id=$1 AND org_id=$2', [req.params.id, req.user.org_id]);
     if (!existing.rows.length) return err(res, 404, 'Контрагент не найден', 'NOT_FOUND');

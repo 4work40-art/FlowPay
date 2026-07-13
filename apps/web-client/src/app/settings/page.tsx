@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
+import { updateToken } from '@/lib/auth';
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
@@ -122,8 +123,11 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      await api.users.changePassword(current, next);
-      setPwOk('Пароль изменён');
+      const res = await api.users.changePassword(current, next);
+      // Сервер отзывает все сессии и выдаёт текущей новый токен — сохраняем,
+      // иначе следующий же запрос закончится выходом из системы.
+      if (res?.data?.access_token) updateToken(res.data.access_token);
+      setPwOk('Пароль изменён, остальные сессии завершены');
       setCurrent(''); setNext(''); setConfirm('');
     } catch (e: any) {
       setPwError(e.message || 'Не удалось сменить пароль');

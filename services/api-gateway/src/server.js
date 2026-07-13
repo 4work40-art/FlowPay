@@ -2,6 +2,7 @@ const express = require('express');
 const cors    = require('cors');
 const { pool } = require('./lib/db');
 const { startOverdueJob } = require('./lib/overdueJob');
+const { startSubscriptionExpiryJob } = require('./lib/subscriptionExpiryJob');
 
 const app  = express();
 const port = process.env.PORT || 3001;
@@ -48,6 +49,7 @@ async function start() {
   }
 
   startOverdueJob();
+  startSubscriptionExpiryJob();
 
   app.listen(port, () => {
     console.log('\n========================================');

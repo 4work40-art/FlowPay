@@ -9,6 +9,7 @@ const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const mailer = require('../lib/mailer');
 const { UPLOAD_DIR } = require('../lib/storage');
+const { validateRequisites } = require('../lib/inn');
 
 const LOGO_ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
 const logoUpload = multer({
@@ -45,10 +46,8 @@ router.patch('/me', authMiddleware, async (req, res) => {
   const { name, inn, kpp } = req.body || {};
   if (name !== undefined && !name.trim())
     return err(res, 400, 'Название не может быть пустым', 'VALIDATION_ERROR');
-  if (inn !== undefined && inn && !/^\d{10}(\d{2})?$/.test(inn))
-    return err(res, 400, 'ИНН должен содержать 10 или 12 цифр', 'VALIDATION_ERROR');
-  if (kpp !== undefined && kpp && !/^\d{9}$/.test(kpp))
-    return err(res, 400, 'КПП должен содержать 9 цифр', 'VALIDATION_ERROR');
+  const reqError = validateRequisites({ inn, kpp });
+  if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
 
   try {
     const existing = await pool.query('SELECT * FROM organizations WHERE id = $1', [req.user.org_id]);

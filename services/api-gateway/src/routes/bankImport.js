@@ -1,5 +1,6 @@
 const express = require('express');
 const multer  = require('multer');
+const { createHash } = require('crypto');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
@@ -27,6 +28,14 @@ function parseAmountToKopecks(raw) {
   return Math.round(value * 100);
 }
 
+// Номер счёта должен встречаться в назначении платежа как отдельный токен,
+// а не как подстрока: счёт «1» не должен «находиться» в «оплата по счёту 104».
+// Границей считаем любой не-буквенно-цифровой символ или край строки.
+function purposeContainsNumber(purpose, number) {
+  const esc = number.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\p{L}\\d])${esc}($|[^\\p{L}\\d])`, 'u').test(purpose);
+}
+
 router.post('/bank-import', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
 
@@ -51,6 +60,27 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
 
   const matched = [];
   const unmatched = [];
+  const skipped = [];
+
+  // Ключ идемпотентности строки выписки — проверяем ДО сопоставления,
+  // иначе уже оплаченный при прошлом импорте счёт выпадает из кандидатов
+  // и дубль ошибочно попадает в «не сопоставлено».
+  const keyOf = (dateRaw, amountKopecks, purpose) => createHash('sha256')
+    .update(`${orgId}|${dateRaw}|${amountKopecks}|${(purpose || '').trim()}`)
+    .digest('hex');
+  const allKeys = rows
+    .map(r => {
+      const amt = parseAmountToKopecks(r[1] || '');
+      return r[0] && amt !== null ? keyOf(r[0], amt, r[2]) : null;
+    })
+    .filter(Boolean);
+  const existing = allKeys.length
+    ? await pool.query(
+        `SELECT import_key FROM payments WHERE org_id=$1 AND import_key = ANY($2)`,
+        [orgId, allKeys]
+      )
+    : { rows: [] };
+  const alreadyImported = new Set(existing.rows.map(r => r.import_key));
 
   for (const row of rows) {
     const [dateRaw, amountRaw, purpose] = row;
@@ -60,17 +90,32 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
       continue;
     }
 
+    const importKey = keyOf(dateRaw, amountKopecks, purpose);
+    if (alreadyImported.has(importKey)) {
+      skipped.push({ raw: row.join(';'), reason: 'Эта строка выписки уже была импортирована ранее' });
+      continue;
+    }
+    alreadyImported.add(importKey); // дубль внутри одного файла тоже не проводим дважды
+
     // Сопоставляем по номеру счёта, встречающемуся в назначении платежа —
     // не по сумме (частичные оплаты меняют логику сравнения).
-    const candidate = invoices.rows.find(inv =>
-      inv.number && purpose && purpose.includes(inv.number) &&
+    const candidates = invoices.rows.filter(inv =>
+      inv.number && purpose && purposeContainsNumber(purpose, inv.number) &&
       amountKopecks <= (inv.amount_kopecks - inv.paid_kopecks)
     );
 
-    if (!candidate) {
+    if (!candidates.length) {
       unmatched.push({ raw: row.join(';'), reason: 'Счёт не найден по номеру в назначении платежа' });
       continue;
     }
+    if (candidates.length > 1) {
+      unmatched.push({
+        raw: row.join(';'),
+        reason: `Назначение платежа подходит сразу к нескольким счетам (${candidates.map(c => '№' + c.number).join(', ')}) — проведите платёж вручную`,
+      });
+      continue;
+    }
+    const candidate = candidates[0];
 
     const client = await pool.connect();
     try {
@@ -89,9 +134,17 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
       }
 
       const payRows = await client.query(`
-        INSERT INTO payments(invoice_id, org_id, amount_kopecks, method, reference, payment_date, created_by)
-        VALUES($1,$2,$3,'bank_transfer',$4,$5,$6) RETURNING id
-      `, [inv.id, orgId, amountKopecks, (purpose || '').slice(0, 255), dateRaw, req.user.id]);
+        INSERT INTO payments(invoice_id, org_id, amount_kopecks, method, reference, payment_date, created_by, import_key)
+        VALUES($1,$2,$3,'bank_transfer',$4,$5,$6,$7)
+        ON CONFLICT (org_id, import_key) WHERE import_key IS NOT NULL DO NOTHING
+        RETURNING id
+      `, [inv.id, orgId, amountKopecks, (purpose || '').slice(0, 255), dateRaw, req.user.id, importKey]);
+
+      if (!payRows.rows.length) {
+        await client.query('ROLLBACK');
+        skipped.push({ raw: row.join(';'), reason: 'Эта строка выписки уже была импортирована ранее' });
+        continue;
+      }
 
       const newPaid = inv.paid_kopecks + amountKopecks;
       const newStatus = newPaid >= inv.amount_kopecks ? 'PAID' : 'PARTIALLY_PAID';
@@ -114,7 +167,10 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
     }
   }
 
-  return ok(res, { matched_count: matched.length, unmatched_count: unmatched.length, matched, unmatched });
+  return ok(res, {
+    matched_count: matched.length, unmatched_count: unmatched.length,
+    skipped_count: skipped.length, matched, unmatched, skipped,
+  });
 });
 
 module.exports = router;

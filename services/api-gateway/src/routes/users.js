@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, revokeAllUserSessions, signToken, TOKEN_TTL_S } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 
 const router = express.Router();
@@ -47,12 +47,16 @@ router.patch('/me/password', authMiddleware, async (req, res) => {
     );
     if (!check.rows.length) return err(res, 401, 'Текущий пароль неверен', 'UNAUTHORIZED');
 
-    await pool.query(
-      `UPDATE users SET password_hash = crypt($1, gen_salt('bf')), updated_at = NOW() WHERE id = $2`,
+    const updated = await pool.query(
+      `UPDATE users SET password_hash = crypt($1, gen_salt('bf')), updated_at = NOW() WHERE id = $2 RETURNING *`,
       [new_password, req.user.id]
     );
+    // Все прочие сессии завершаются; текущей выдаём свежий токен,
+    // чтобы пользователь не вылетел сразу после смены пароля.
+    await revokeAllUserSessions(req.user.id);
+    const { token } = signToken({ ...updated.rows[0], is_platform_admin: req.user.is_platform_admin });
     await audit(req.user.org_id, req.user.id, 'user.password_changed', 'user', req.user.id, null, null);
-    return ok(res, { message: 'Пароль изменён' });
+    return ok(res, { message: 'Пароль изменён, остальные сессии завершены', access_token: token, expires_in: TOKEN_TTL_S });
   } catch (e) {
     return dbErr(res, e, '[password change]');
   }
