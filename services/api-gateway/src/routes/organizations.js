@@ -68,6 +68,48 @@ router.patch('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Полное удаление организации со всеми данными (152-ФЗ: право на отзыв
+// согласия и уничтожение персональных данных). Необратимо. Каскадом уходят
+// счета, платежи, контрагенты, документы, подписки, транзакции, инвайты;
+// пользователи удаляются явно (их FK — SET NULL). Записи журнала аудита
+// обезличиваются (org_id/user_id становятся NULL по FK).
+router.delete('/me', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'owner')
+    return err(res, 403, 'Удалить организацию может только владелец', 'FORBIDDEN');
+  const { password } = req.body || {};
+  if (!password) return err(res, 400, 'Для удаления подтвердите пароль', 'VALIDATION_ERROR');
+
+  const client = await pool.connect();
+  try {
+    const check = await client.query(
+      'SELECT id FROM users WHERE id=$1 AND password_hash = crypt($2, password_hash)',
+      [req.user.id, password]
+    );
+    if (!check.rows.length) return err(res, 401, 'Пароль неверен', 'UNAUTHORIZED');
+
+    // Фиксируем факт удаления до того, как исчезнут связанные записи.
+    await audit(req.user.org_id, req.user.id, 'organization.deleted', 'organization', req.user.org_id,
+      null, { requested_by: req.user.email });
+
+    await client.query('BEGIN');
+    const users = await client.query('SELECT id FROM users WHERE org_id=$1', [req.user.org_id]);
+    await client.query('DELETE FROM users WHERE org_id=$1', [req.user.org_id]);
+    await client.query('DELETE FROM organizations WHERE id=$1', [req.user.org_id]);
+    await client.query('COMMIT');
+
+    // Активные сессии всех пользователей организации гаснут немедленно.
+    const { revokeAllUserSessions } = require('../lib/auth');
+    for (const u of users.rows) await revokeAllUserSessions(u.id);
+
+    return ok(res, { message: 'Организация и все данные удалены' });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    return dbErr(res, e, '[org delete]');
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/me/logo', authMiddleware, (req, res) => {
   if (req.user.role !== 'owner')
     return err(res, 403, 'Загружать логотип может только владелец организации', 'FORBIDDEN');

@@ -84,6 +84,8 @@ export const api = {
     }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
     transition: (id: string, transition: string, reason?: string) =>
       req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
+    setPublic: (id: string, enabled: boolean) =>
+      req(`/invoices/${id}/public`, { method:'PATCH', body:JSON.stringify({ enabled }) }),
   },
 
   documents: {
@@ -145,6 +147,7 @@ export const api = {
 
   counterparties: {
     list: () => req('/counterparties'),
+    suggest: (inn: string) => req(`/counterparties/suggest?inn=${encodeURIComponent(inn)}`),
     create: (body: { name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string }) =>
       req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
@@ -174,6 +177,8 @@ export const api = {
     me: () => req('/organizations/me'),
     update: (body: { name?: string; inn?: string; kpp?: string }) =>
       req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
+    deleteMe: (password: string) =>
+      req('/organizations/me', { method:'DELETE', body:JSON.stringify({ password }) }),
     fetchLogoBlobUrl: async (): Promise<string | null> => {
       const token = getStoredToken();
       const res = await fetch(apiUrl('/organizations/me/logo'), {

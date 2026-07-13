@@ -3,9 +3,28 @@ const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
-const { validateRequisites } = require('../lib/inn');
+const { validateRequisites, isValidInn } = require('../lib/inn');
+const dadata = require('../lib/dadata');
 
 const router = express.Router();
+
+// Автозаполнение реквизитов по ИНН (ЕГРЮЛ/ЕГРИП через DaData).
+// GET /counterparties/suggest?inn=... — до создания записи, поэтому раньше CRUD.
+router.get('/suggest', authMiddleware, async (req, res) => {
+  const inn = String(req.query.inn || '').trim();
+  if (!isValidInn(inn))
+    return err(res, 400, 'ИНН некорректен: проверьте количество цифр и правильность ввода', 'VALIDATION_ERROR');
+  if (!dadata.isConfigured())
+    return err(res, 503, 'Подсказки по ИНН не настроены (DADATA_API_KEY)', 'SUGGEST_NOT_CONFIGURED');
+  try {
+    const party = await dadata.findPartyByInn(inn);
+    if (!party) return err(res, 404, 'Организация с таким ИНН не найдена в ЕГРЮЛ/ЕГРИП', 'NOT_FOUND');
+    return ok(res, party);
+  } catch (e) {
+    console.error('[counterparty suggest]', e.message);
+    return err(res, 502, 'Сервис подсказок временно недоступен', 'SUGGEST_UNAVAILABLE');
+  }
+});
 
 router.get('/', authMiddleware, async (req, res) => {
   const orgId = req.user.org_id;

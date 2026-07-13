@@ -25,9 +25,10 @@ router.get('/invoices/:id', publicInvoiceLimiter, async (req, res) => {
         o.name AS org_name
       FROM invoices i
       JOIN organizations o ON o.id = i.org_id
-      WHERE i.id = $1
+      WHERE i.id = $1 AND i.public_enabled
     `, [req.params.id]);
 
+    // Отключённая ссылка неотличима от несуществующего счёта.
     if (!rows.length) return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
     const inv = rows[0];
 

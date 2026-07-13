@@ -32,6 +32,18 @@ router.get('/', authMiddleware, async (req, res) => {
         AND due_date BETWEEN NOW() AND NOW() + INTERVAL '7 days'
     `, [orgId]);
 
+    // DSO: средний срок от выставления счёта до полной оплаты (по последнему
+    // платежу оплаченных счетов). Отвечает на вопрос «за сколько дней нам
+    // в среднем платят».
+    const dso = await pool.query(`
+      SELECT AVG(pd.last_pay - COALESCE(i.invoice_date, i.created_at::date)) AS days
+      FROM invoices i
+      JOIN (SELECT invoice_id, MAX(payment_date) AS last_pay FROM payments GROUP BY invoice_id) pd
+        ON pd.invoice_id = i.id
+      WHERE i.org_id = $1 AND i.status IN ('PAID','ARCHIVED')
+    `, [orgId]);
+    const avgPaymentDays = dso.rows[0].days === null ? null : Math.round(+dso.rows[0].days);
+
     // Trust Score — не статичное число, а доля собственных счетов организации,
     // оплаченных без просрочки/списания/спора. Пока нет истории — 100 (нейтральный старт),
     // не 50: у только что зарегистрированной организации нет причин выглядеть "подозрительно".
@@ -53,6 +65,7 @@ router.get('/', authMiddleware, async (req, res) => {
       due_7_days:      { kopecks: +due7.rows[0].v,  display: fmt(due7.rows[0].v), count: +due7.rows[0].c },
       total_invoices:  +s.total_invoices,
       trust_score:     trustScore,
+      avg_payment_days: avgPaymentDays, // null, пока нет оплаченных счетов
     });
   } catch (e) {
     return dbErr(res, e, '[dashboard]');

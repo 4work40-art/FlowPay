@@ -6,48 +6,27 @@ const { ok, err, dbErr } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 
+const {
+  parseCsv, is1CFormat, parse1C, decodeStatement,
+  parseAmountToKopecks, purposeContainsNumber,
+} = require('../lib/statementParse');
+
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-// Простой CSV-парсер под формат выписки: дата;сумма;назначение платежа
-// (разделитель ; или , — оба часто встречаются у банков РФ). Без внешних
-// библиотек — формат намеренно узкий и предсказуемый.
-function parseCsv(text) {
-  const delimiter = text.includes(';') ? ';' : ',';
-  return text
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => line.split(delimiter).map(c => c.trim().replace(/^"|"$/g, '')));
-}
-
-function parseAmountToKopecks(raw) {
-  const normalized = raw.replace(/\s/g, '').replace(',', '.');
-  const value = Number(normalized);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return Math.round(value * 100);
-}
-
-// Номер счёта должен встречаться в назначении платежа как отдельный токен,
-// а не как подстрока: счёт «1» не должен «находиться» в «оплата по счёту 104».
-// Границей считаем любой не-буквенно-цифровой символ или край строки.
-function purposeContainsNumber(purpose, number) {
-  const esc = number.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^\\p{L}\\d])${esc}($|[^\\p{L}\\d])`, 'u').test(purpose);
-}
 
 router.post('/bank-import', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
 
   let rows;
   try {
-    rows = parseCsv(req.file.buffer.toString('utf-8'));
+    const text = decodeStatement(req.file.buffer);
+    rows = is1CFormat(text) ? parse1C(text) : parseCsv(text);
   } catch (e) {
-    return err(res, 400, 'Не удалось прочитать файл — ожидается CSV', 'VALIDATION_ERROR');
+    return err(res, 400, 'Не удалось прочитать файл — ожидается CSV или 1CClientBankExchange', 'VALIDATION_ERROR');
   }
-  if (!rows.length) return err(res, 400, 'Файл пуст', 'VALIDATION_ERROR');
+  if (!rows.length) return err(res, 400, 'Файл пуст или не содержит документов', 'VALIDATION_ERROR');
 
-  // Первая строка может быть заголовком — пропускаем, если первая "сумма"
+  // Первая строка CSV может быть заголовком — пропускаем, если первая "сумма"
   // не парсится как число.
   if (rows.length > 1 && parseAmountToKopecks(rows[0][1] || '') === null) rows = rows.slice(1);
 
@@ -82,6 +61,10 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
     : { rows: [] };
   const alreadyImported = new Set(existing.rows.map(r => r.import_key));
 
+  // Одно соединение на весь файл (а не на строку) — большая выписка не
+  // исчерпывает пул; каждая строка остаётся отдельной транзакцией.
+  const client = await pool.connect();
+  try {
   for (const row of rows) {
     const [dateRaw, amountRaw, purpose] = row;
     const amountKopecks = parseAmountToKopecks(amountRaw || '');
@@ -117,7 +100,6 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
     }
     const candidate = candidates[0];
 
-    const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const invLock = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [candidate.id]);
@@ -162,9 +144,10 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
       unmatched.push({ raw: row.join(';'), reason: 'Ошибка сохранения платежа' });
-    } finally {
-      client.release();
     }
+  }
+  } finally {
+    client.release();
   }
 
   return ok(res, {

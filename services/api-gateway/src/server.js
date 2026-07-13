@@ -3,11 +3,13 @@ const cors    = require('cors');
 const { pool } = require('./lib/db');
 const { startOverdueJob } = require('./lib/overdueJob');
 const { startSubscriptionExpiryJob } = require('./lib/subscriptionExpiryJob');
+const { startOverdueDigestJob } = require('./lib/overdueDigestJob');
 
 const app  = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+// Без CORS_ORIGIN не откатываемся в '*': по умолчанию — локальный фронтенд.
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json());
 
 app.get('/health', async (req, res) => {
@@ -50,6 +52,7 @@ async function start() {
 
   startOverdueJob();
   startSubscriptionExpiryJob();
+  startOverdueDigestJob();
 
   app.listen(port, () => {
     console.log('\n========================================');

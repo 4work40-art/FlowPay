@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Синтаксис всех JS-файлов бэкенда
+        run: |
+          cd services/api-gateway
+          for f in $(find src -name '*.js'); do node --check "$f"; done
+      - name: Юнит-тесты (ИНН, разбор выписок)
+        run: cd services/api-gateway && npm test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web-client/package-lock.json
+      - name: Установка зависимостей
+        run: cd apps/web-client && npm ci
+      - name: Проверка типов TypeScript
+        run: cd apps/web-client && npx tsc --noEmit

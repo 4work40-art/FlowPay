@@ -159,4 +159,24 @@ router.patch('/:id/state', authMiddleware, async (req, res) => {
   }
 });
 
+// Включение/отключение публичной ссылки на счёт. Отключённая ссылка
+// возвращает контрагенту 404 — доступ можно отозвать в любой момент.
+router.patch('/:id/public', authMiddleware, async (req, res) => {
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean')
+    return err(res, 400, 'Укажите enabled: true|false', 'VALIDATION_ERROR');
+  try {
+    const { rows } = await pool.query(
+      'UPDATE invoices SET public_enabled=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3 RETURNING id, public_enabled',
+      [enabled, req.params.id, req.user.org_id]
+    );
+    if (!rows.length) return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
+    await audit(req.user.org_id, req.user.id, 'invoice.public_toggled', 'invoice', req.params.id,
+      null, { public_enabled: enabled });
+    return ok(res, rows[0]);
+  } catch (e) {
+    return dbErr(res, e, '[invoice public toggle]');
+  }
+});
+
 module.exports = router;

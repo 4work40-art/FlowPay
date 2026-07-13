@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
-import { updateToken } from '@/lib/auth';
+import { updateToken, clearSession } from '@/lib/auth';
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
@@ -37,6 +37,11 @@ export default function SettingsPage() {
   const [inviteError, setInviteError] = useState('');
   const [inviteOk,    setInviteOk]    = useState('');
   const [inviting,    setInviting]    = useState(false);
+
+  const [delPassword, setDelPassword] = useState('');
+  const [delError,    setDelError]    = useState('');
+  const [deleting,    setDeleting]    = useState(false);
+  const [delConfirmOpen, setDelConfirmOpen] = useState(false);
 
   const loadInvites = () => {
     if (me?.role !== 'owner') return;
@@ -298,6 +303,52 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {me?.role === 'owner' && (
+        <div className="card" style={{ marginTop: 16, borderColor: 'var(--red, #c0392b)' }}>
+          <div className="card-header" style={{ color: 'var(--red, #c0392b)' }}>Удаление организации</div>
+          <div className="card-body">
+            <p style={{ fontSize: 13.5, color: 'var(--text2)', marginBottom: 12 }}>
+              Организация, все её счета, платежи, контрагенты, документы и учётные записи
+              сотрудников будут удалены безвозвратно (152-ФЗ: отзыв согласия на обработку
+              персональных данных). Отменить это действие невозможно.
+            </p>
+            {!delConfirmOpen ? (
+              <button className="btn btn-sm" style={{ color: 'var(--red, #c0392b)' }} onClick={() => setDelConfirmOpen(true)}>
+                Удалить организацию…
+              </button>
+            ) : (
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setDelError('');
+                setDeleting(true);
+                try {
+                  await api.organization.deleteMe(delPassword);
+                  clearSession();
+                  window.location.href = '/';
+                } catch (err: any) {
+                  setDelError(err.message || 'Не удалось удалить организацию');
+                  setDeleting(false);
+                }
+              }}>
+                {delError && <div className="error-box" style={{ marginBottom: 12 }}>{delError}</div>}
+                <div className="form-group" style={{ maxWidth: 320 }}>
+                  <label className="field-label">Введите пароль для подтверждения</label>
+                  <input type="password" required value={delPassword} onChange={e => setDelPassword(e.target.value)} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="submit" className="btn btn-sm" style={{ color: '#fff', background: 'var(--red, #c0392b)' }} disabled={deleting}>
+                    {deleting ? 'Удаляем…' : 'Удалить навсегда'}
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={() => { setDelConfirmOpen(false); setDelPassword(''); setDelError(''); }}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

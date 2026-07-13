@@ -352,6 +352,13 @@ export default function DashboardPage() {
               <div className="metric-label">Всего счетов</div>
               <div className="metric-value">{summary?.total_invoices ?? 0}</div>
             </div>
+            <div className="metric-card blue">
+              <div className="metric-label">Средний срок оплаты</div>
+              <div className="metric-value">
+                {summary?.avg_payment_days == null ? '—' : `${summary.avg_payment_days} дн.`}
+              </div>
+              <div className="metric-hint">от выставления до полной оплаты</div>
+            </div>
             <div className="metric-card green">
               <div className="metric-label">Trust Score</div>
               <div className="metric-value">{summary?.trust_score ?? 50}/100</div>

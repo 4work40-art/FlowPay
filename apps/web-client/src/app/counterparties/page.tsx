@@ -21,6 +21,7 @@ export default function CounterpartiesPage() {
   const [form,    setForm]    = useState(EMPTY_FORM);
   const [saving,  setSaving]  = useState(false);
   const [formError, setFormError] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -75,7 +76,35 @@ export default function CounterpartiesPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">ИНН</label>
-                  <input type="text" value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value })} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input type="text" value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value })} />
+                    <button
+                      type="button" className="btn btn-sm"
+                      title="Подтянуть название, КПП и адрес из ЕГРЮЛ/ЕГРИП по ИНН"
+                      disabled={suggesting || !form.inn.trim()}
+                      onClick={async () => {
+                        setSuggesting(true); setFormError('');
+                        try {
+                          const res = await api.counterparties.suggest(form.inn.trim());
+                          const p = res.data;
+                          setForm({
+                            ...form,
+                            name: p.name || form.name,
+                            inn: p.inn || form.inn,
+                            kpp: p.kpp || form.kpp,
+                            address: p.address || form.address,
+                          });
+                          if (p.status && p.status !== 'ACTIVE')
+                            setFormError('Внимание: по данным ЕГРЮЛ организация не действует (' + p.status + ')');
+                        } catch (e: any) {
+                          setFormError(e.message || 'Не удалось получить данные по ИНН');
+                        } finally {
+                          setSuggesting(false);
+                        }
+                      }}>
+                      {suggesting ? '…' : '↓ Заполнить'}
+                    </button>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="field-label">КПП</label>
