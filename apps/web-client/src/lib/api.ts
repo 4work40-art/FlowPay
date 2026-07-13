@@ -161,6 +161,13 @@ export const api = {
   admin: {
     overview: () => req('/admin/overview'),
     organizations: () => req('/admin/organizations'),
+    organization: (id: string) => req(`/admin/organizations/${id}`),
+    updateOrganization: (id: string, body: { plan?: string; invoice_limit?: number; is_active?: boolean; reason: string }) =>
+      req(`/admin/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    engagement: () => req('/admin/engagement'),
+    revenueEvents: () => req('/admin/revenue-events'),
+    createRevenueEvent: (body: { org_id: string; amount_kopecks: number; plan?: string; occurred_at?: string; note?: string }) =>
+      req('/admin/revenue-events', { method: 'POST', body: JSON.stringify(body) }),
   },
 
   organization: {

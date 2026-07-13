@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, PLAN_LABEL } from '@/lib/api';
+import AdminTabs from '@/components/AdminTabs';
 
 type Overview = {
   organizations: number;
@@ -36,10 +37,11 @@ export default function AdminOverviewPage() {
       <div className="page-header">
         <div>
           <div className="page-title">👑 Кабинет создателя</div>
-          <div className="page-sub">Показатели по всей платформе, across всех организаций</div>
+          <div className="page-sub">Показатели по всей платформе, по всем организациям</div>
         </div>
-        <a href="/admin/organizations" className="btn btn-sm">Все организации →</a>
       </div>
+
+      <AdminTabs />
 
       <div className="metric-grid">
         <div className="metric-card blue">

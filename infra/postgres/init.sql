@@ -171,6 +171,24 @@ CREATE INDEX ON audit_logs(timestamp DESC);
 CREATE INDEX ON audit_logs(org_id);
 CREATE INDEX ON audit_logs(action);
 
+-- Ручной учёт дохода платформы (кабинет создателя, вкладка «Доход») —
+-- отдельно от billing_transactions: тут фиксируются любые поступления,
+-- включая ручные/офлайн, до полноценной интеграции биллинга по всем сценариям.
+CREATE TABLE subscription_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  event_type VARCHAR(30) NOT NULL DEFAULT 'payment_received',
+  plan plan_type,
+  amount_kopecks BIGINT NOT NULL CHECK (amount_kopecks > 0),
+  currency VARCHAR(3) NOT NULL DEFAULT 'RUB',
+  occurred_at DATE NOT NULL DEFAULT CURRENT_DATE,
+  note TEXT,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON subscription_events(org_id);
+CREATE INDEX ON subscription_events(occurred_at);
+
 -- Seed: только организация и логин-пользователь.
 -- Название организации можно поменять через Adminer (таблица organizations) —
 -- логин/пароль ниже не трогаем, чтобы не сломать текущий доступ.

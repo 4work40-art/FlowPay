@@ -58,6 +58,11 @@ router.post('/', authMiddleware, async (req, res) => {
       return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
     }
     const inv = invRows.rows[0];
+    // pg возвращает BIGINT-колонки строками — без явного приведения
+    // `inv.paid_kopecks + amount_kopecks` превращается в конкатенацию строк,
+    // а не сложение чисел.
+    inv.amount_kopecks = Number(inv.amount_kopecks);
+    inv.paid_kopecks   = Number(inv.paid_kopecks);
 
     if (PAYMENT_BLOCKED_STATUSES.includes(inv.status)) {
       await client.query('ROLLBACK');

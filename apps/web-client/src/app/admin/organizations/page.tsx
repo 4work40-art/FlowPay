@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, PLAN_LABEL } from '@/lib/api';
+import AdminTabs from '@/components/AdminTabs';
 
 type Org = {
   id: string;
@@ -19,6 +20,7 @@ export default function AdminOrganizationsPage() {
   const [items,   setItems]   = useState<Org[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
+  const [query,   setQuery]   = useState('');
 
   useEffect(() => {
     api.admin.organizations()
@@ -30,6 +32,10 @@ export default function AdminOrganizationsPage() {
   if (loading) return <div className="loading">⏳ Загрузка...</div>;
   if (error) return <div className="error-box"><strong>Ошибка:</strong> {error}</div>;
 
+  const filtered = query
+    ? items.filter(o => o.name.toLowerCase().includes(query.toLowerCase()))
+    : items;
+
   return (
     <div>
       <div className="page-header">
@@ -37,7 +43,15 @@ export default function AdminOrganizationsPage() {
           <div className="page-title">Организации на платформе</div>
           <div className="page-sub">{items.length} организаций</div>
         </div>
-        <a href="/admin" className="btn btn-sm">← Обзор</a>
+      </div>
+
+      <AdminTabs />
+
+      <div className="filter-row">
+        <input
+          type="text" placeholder="Поиск по названию…" style={{ maxWidth: 280 }}
+          value={query} onChange={e => setQuery(e.target.value)}
+        />
       </div>
 
       <div className="card">
@@ -55,8 +69,8 @@ export default function AdminOrganizationsPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map(o => (
-                <tr key={o.id}>
+              {filtered.map(o => (
+                <tr key={o.id} className="clickable" onClick={() => window.location.href = `/admin/organizations/${o.id}`}>
                   <td style={{ fontWeight: 500 }}>{o.name}</td>
                   <td>{PLAN_LABEL[o.plan] ?? o.plan} <span style={{ color: 'var(--text2)', fontSize: 11 }}>· лимит {o.invoice_limit}</span></td>
                   <td>{o.user_count}</td>
@@ -70,8 +84,8 @@ export default function AdminOrganizationsPage() {
                   </td>
                 </tr>
               ))}
-              {!items.length && (
-                <tr><td colSpan={7} className="empty-state">Организаций нет</td></tr>
+              {!filtered.length && (
+                <tr><td colSpan={7} className="empty-state">{query ? 'Ничего не найдено' : 'Организаций нет'}</td></tr>
               )}
             </tbody>
           </table>

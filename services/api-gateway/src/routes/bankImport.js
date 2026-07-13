@@ -77,6 +77,10 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
       await client.query('BEGIN');
       const invLock = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [candidate.id]);
       const inv = invLock.rows[0];
+      // pg возвращает BIGINT-колонки строками — без явного приведения
+      // `inv.paid_kopecks + amountKopecks` даёт конкатенацию строк.
+      inv.amount_kopecks = Number(inv.amount_kopecks);
+      inv.paid_kopecks   = Number(inv.paid_kopecks);
       const remaining = inv.amount_kopecks - inv.paid_kopecks;
       if (amountKopecks > remaining) {
         await client.query('ROLLBACK');
