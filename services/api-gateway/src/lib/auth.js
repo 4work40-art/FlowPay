@@ -36,6 +36,13 @@ async function authMiddleware(req, res, next) {
   try {
     const revoked = await redis.get(`revoked:${payload.jti}`);
     if (revoked) return err(res, 401, 'Токен отозван', 'UNAUTHORIZED');
+    // Смена/сброс пароля отзывает все сессии пользователя: токены,
+    // выданные раньше отметки, недействительны.
+    // Сравнение в секундах (гранулярность iat): токен, выданный в ту же
+    // секунду, что и смена пароля (в т.ч. новый токен самой смены), живёт.
+    const cutoff = await redis.get(`pwrev_s:${payload.sub}`);
+    if (cutoff && payload.iat < Number(cutoff))
+      return err(res, 401, 'Сессия завершена после смены пароля — войдите заново', 'UNAUTHORIZED');
   } catch (e) {
     console.warn('[auth] revocation check skipped:', e.message);
   }
@@ -52,4 +59,15 @@ function requirePlatformAdmin(req, res, next) {
   next();
 }
 
-module.exports = { JWT_SECRET, TOKEN_TTL_S, signToken, authMiddleware, requirePlatformAdmin };
+// Отзыв всех активных сессий пользователя (смена/сброс пароля).
+// Хранится дольше TTL токена, чтобы отметка гарантированно пережила
+// все выданные до неё токены.
+async function revokeAllUserSessions(userId) {
+  try {
+    await redis.set(`pwrev_s:${userId}`, String(Math.floor(Date.now() / 1000)), 'EX', TOKEN_TTL_S + 3600);
+  } catch (e) {
+    console.warn('[auth] revoke-all failed:', e.message);
+  }
+}
+
+module.exports = { JWT_SECRET, TOKEN_TTL_S, signToken, authMiddleware, requirePlatformAdmin, revokeAllUserSessions };

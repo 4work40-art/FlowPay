@@ -4,7 +4,7 @@ const { createHash } = require('crypto');
 const { pool } = require('../lib/db');
 const { redis } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { signToken, authMiddleware, TOKEN_TTL_S } = require('../lib/auth');
+const { signToken, authMiddleware, TOKEN_TTL_S, revokeAllUserSessions } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { rateLimit } = require('../lib/rateLimit');
 const mailer = require('../lib/mailer');
@@ -207,6 +207,9 @@ router.post('/reset-password', async (req, res) => {
     } finally {
       client.release();
     }
+
+    // Угнанные/старые сессии не должны переживать сброс пароля.
+    await revokeAllUserSessions(record.user_id);
 
     await audit(null, record.user_id, 'auth.password_reset_completed', 'user', record.user_id, null, null);
     return ok(res, { message: 'Пароль изменён, теперь можно войти' });

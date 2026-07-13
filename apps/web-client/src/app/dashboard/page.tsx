@@ -110,7 +110,7 @@ export default function DashboardPage() {
       </div>
 
       {summary?.total_invoices === 0 && (
-        <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--blue-light, #eef4ff)' }}>
+        <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--gold-light, #F1E2C2)' }}>
           <div style={{ fontWeight: 600, marginBottom: 12 }}>👋 Первые шаги в Счёт&amp;Контроль</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
             <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -171,9 +171,17 @@ export default function DashboardPage() {
               </div>
               <div className="trust-sub">Надёжный партнёр · Топ 25% платформы</div>
             </div>
-            <div>
-              <div className="trust-score">{summary?.trust_score ?? 50}</div>
-              <div className="trust-score-sub">из 100</div>
+            <div className="gauge-wrap">
+              <div className="gauge">
+                <div className="gauge-track" />
+                <div className="gauge-fill" style={{ ['--gauge-deg' as any]: `${(summary?.trust_score ?? 50) * 1.8}deg` }} />
+                <div className="gauge-mask" />
+                <div className="gauge-needle" style={{ ['--gauge-rot' as any]: `${(summary?.trust_score ?? 50) * 1.8 - 90}deg` }} />
+              </div>
+              <div>
+                <div className="trust-score">{summary?.trust_score ?? 50}</div>
+                <div className="trust-score-sub">из 100</div>
+              </div>
             </div>
           </div>
 
@@ -343,6 +351,13 @@ export default function DashboardPage() {
             <div className="metric-card">
               <div className="metric-label">Всего счетов</div>
               <div className="metric-value">{summary?.total_invoices ?? 0}</div>
+            </div>
+            <div className="metric-card blue">
+              <div className="metric-label">Средний срок оплаты</div>
+              <div className="metric-value">
+                {summary?.avg_payment_days == null ? '—' : `${summary.avg_payment_days} дн.`}
+              </div>
+              <div className="metric-hint">от выставления до полной оплаты</div>
             </div>
             <div className="metric-card green">
               <div className="metric-label">Trust Score</div>

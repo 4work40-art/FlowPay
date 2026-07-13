@@ -101,15 +101,37 @@ export default function InvoiceDetailPage() {
           <div className="page-sub">{inv.counterparty_name ?? 'без контрагента'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-sm"
-            onClick={() => {
-              const url = `${window.location.origin}/public/invoice/${id}`;
-              navigator.clipboard?.writeText(url);
-              alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
-            }}>
-            🔗 Поделиться
-          </button>
+          {inv.public_enabled ? (
+            <>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  const url = `${window.location.origin}/public/invoice/${id}`;
+                  navigator.clipboard?.writeText(url);
+                  alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
+                }}>
+                🔗 Поделиться
+              </button>
+              <button
+                className="btn btn-sm"
+                title="Публичная ссылка перестанет открываться у контрагента"
+                onClick={async () => {
+                  try { await api.invoices.setPublic(id, false); setInv({ ...inv, public_enabled: false }); }
+                  catch (e: any) { alert(e.message); }
+                }}>
+                🚫 Закрыть доступ
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-sm"
+              onClick={async () => {
+                try { await api.invoices.setPublic(id, true); setInv({ ...inv, public_enabled: true }); }
+                catch (e: any) { alert(e.message); }
+              }}>
+              🔓 Открыть доступ по ссылке
+            </button>
+          )}
           <a href="/invoices" className="btn btn-sm">← К списку</a>
         </div>
       </div>

@@ -29,6 +29,12 @@ export function setSession(token: string, user: StoredUser) {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
+// Обновить только токен (например, после смены пароля сервер выдаёт новый,
+// а остальные сессии отзывает).
+export function updateToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);

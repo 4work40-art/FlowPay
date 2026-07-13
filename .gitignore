@@ -6,3 +6,4 @@ node_modules/
 next-env.d.ts
 backups/
 services/api-gateway/uploads/
+tsconfig.tsbuildinfo

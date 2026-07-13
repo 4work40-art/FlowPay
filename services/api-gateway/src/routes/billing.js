@@ -57,6 +57,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
       description: `Подписка «${planInfo.label}» — Счёт&Контроль`,
       returnUrl,
       metadata: { org_id: req.user.org_id, transaction_id: txId, plan },
+      receiptEmail: req.user.email, // 54-ФЗ: чек уходит на email владельца
     });
 
     await pool.query(

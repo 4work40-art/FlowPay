@@ -59,6 +59,7 @@ CREATE TABLE invoices (
   status invoice_status NOT NULL DEFAULT 'CREATED',
   invoice_date DATE, due_date DATE, notes TEXT,
   fraud_score DECIMAL(4,3) DEFAULT 0.000,
+  public_enabled BOOLEAN NOT NULL DEFAULT true,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -81,11 +82,14 @@ CREATE TABLE payments (
   payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
   fraud_score DECIMAL(4,3) DEFAULT 0.000,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  import_key VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX ON payments(invoice_id);
 CREATE INDEX ON payments(org_id);
+CREATE UNIQUE INDEX payments_org_import_key_uniq
+  ON payments(org_id, import_key) WHERE import_key IS NOT NULL;
 
 CREATE TABLE subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -5,7 +5,7 @@ import AdminTabs from '@/components/AdminTabs';
 
 type RevenueEvent = {
   id: string; org_name: string; plan: string | null; amount_display: string;
-  occurred_at: string; note: string | null;
+  occurred_at: string; note: string | null; source: 'manual' | 'yookassa';
 };
 type Org = { id: string; name: string };
 
@@ -130,7 +130,7 @@ export default function AdminRevenuePage() {
         <>
           <div className="metric-grid" style={{ marginBottom: 16 }}>
             <div className="metric-card green">
-              <div className="metric-label">Валовый доход (введено вручную)</div>
+              <div className="metric-label">Валовый доход (ЮKassa + вручную)</div>
               <div className="metric-value">{total}</div>
             </div>
           </div>
@@ -138,7 +138,7 @@ export default function AdminRevenuePage() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Дата</th><th>Организация</th><th>Тариф</th><th>Сумма</th><th>Примечание</th></tr>
+                  <tr><th>Дата</th><th>Организация</th><th>Тариф</th><th>Сумма</th><th>Источник</th><th>Примечание</th></tr>
                 </thead>
                 <tbody>
                   {items.map(r => (
@@ -147,6 +147,7 @@ export default function AdminRevenuePage() {
                       <td style={{ fontWeight: 500 }}>{r.org_name}</td>
                       <td>{r.plan ? (PLAN_LABEL[r.plan] ?? r.plan) : '—'}</td>
                       <td style={{ fontWeight: 600 }}>{r.amount_display}</td>
+                      <td>{r.source === 'yookassa' ? 'ЮKassa (авто)' : 'Вручную'}</td>
                       <td style={{ color: 'var(--text2)' }}>{r.note ?? '—'}</td>
                     </tr>
                   ))}

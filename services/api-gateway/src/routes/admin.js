@@ -3,19 +3,34 @@ const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware, requirePlatformAdmin } = require('../lib/auth');
 const { audit } = require('../lib/audit');
+const { PLANS } = require('../lib/plans');
 
 const router = express.Router();
 
 router.get('/overview', authMiddleware, requirePlatformAdmin, async (req, res) => {
   try {
+    // Кабинет создателя — метрики бизнеса, а не долгов клиентов:
+    // база, платящие, доход (ЮKassa + вручную внесённые платежи), активность.
     const totals = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM organizations)                AS org_count,
-        (SELECT COUNT(*) FROM users WHERE is_active = true)  AS user_count,
-        (SELECT COUNT(*) FROM invoices)                      AS invoice_count,
-        (SELECT COUNT(*) FROM payments)                      AS payment_count,
-        (SELECT COALESCE(SUM(amount_kopecks - paid_kopecks) FILTER
-           (WHERE status NOT IN ('PAID','ARCHIVED','WRITTEN_OFF')), 0) FROM invoices) AS total_debt
+        (SELECT COUNT(*) FROM organizations)                       AS org_count,
+        (SELECT COUNT(*) FROM organizations WHERE plan <> 'free')  AS paying_org_count,
+        (SELECT COUNT(*) FROM organizations
+           WHERE created_at >= NOW() - INTERVAL '30 days')         AS new_orgs_30d,
+        (SELECT COUNT(*) FROM users WHERE is_active = true)        AS user_count,
+        (SELECT COUNT(*) FROM invoices)                            AS invoice_count,
+        (SELECT COUNT(*) FROM payments)                            AS payment_count,
+        (SELECT COUNT(DISTINCT o.id) FROM organizations o
+           JOIN users u ON u.org_id = o.id
+           WHERE u.last_login_at >= NOW() - INTERVAL '30 days')    AS active_orgs_30d,
+        (SELECT COALESCE(SUM(amount_kopecks), 0) FROM billing_transactions
+           WHERE status = 'succeeded')                             AS revenue_yookassa_total,
+        (SELECT COALESCE(SUM(amount_kopecks), 0) FROM billing_transactions
+           WHERE status = 'succeeded'
+             AND confirmed_at >= date_trunc('month', NOW()))       AS revenue_yookassa_month,
+        (SELECT COALESCE(SUM(amount_kopecks), 0) FROM subscription_events) AS revenue_manual_total,
+        (SELECT COALESCE(SUM(amount_kopecks), 0) FROM subscription_events
+           WHERE occurred_at >= date_trunc('month', NOW()))        AS revenue_manual_month
     `);
 
     const planRows = await pool.query(
@@ -47,13 +62,29 @@ router.get('/overview', authMiddleware, requirePlatformAdmin, async (req, res) =
     `);
 
     const t = totals.rows[0];
+    const planDistribution = Object.fromEntries(planRows.rows.map(r => [r.plan, +r.c]));
+
+    // MRR — по действующим тарифам организаций и прайсу тарифов.
+    const mrrKopecks = planRows.rows.reduce((sum, r) =>
+      sum + (PLANS[r.plan]?.price_kopecks || 0) * +r.c, 0);
+
+    const revenueTotal = +t.revenue_yookassa_total + +t.revenue_manual_total;
+    const revenueMonth = +t.revenue_yookassa_month + +t.revenue_manual_month;
+
     return ok(res, {
       organizations: +t.org_count,
       users: +t.user_count,
       invoices: +t.invoice_count,
       payments: +t.payment_count,
-      total_debt: { kopecks: +t.total_debt, display: fmt(t.total_debt) },
-      plan_distribution: Object.fromEntries(planRows.rows.map(r => [r.plan, +r.c])),
+      paying_organizations: +t.paying_org_count,
+      new_orgs_30d: +t.new_orgs_30d,
+      active_orgs_30d: +t.active_orgs_30d,
+      conversion_pct: +t.org_count ? Math.round((+t.paying_org_count / +t.org_count) * 100) : 0,
+      active_pct: +t.org_count ? Math.round((+t.active_orgs_30d / +t.org_count) * 100) : 0,
+      mrr: { kopecks: mrrKopecks, display: fmt(mrrKopecks) },
+      revenue_month: { kopecks: revenueMonth, display: fmt(revenueMonth) },
+      revenue_total: { kopecks: revenueTotal, display: fmt(revenueTotal) },
+      plan_distribution: planDistribution,
       growth,
       recent_activity: activity.rows,
     });
@@ -206,16 +237,24 @@ router.get('/engagement', authMiddleware, requirePlatformAdmin, async (req, res)
 
 router.get('/revenue-events', authMiddleware, requirePlatformAdmin, async (req, res) => {
   try {
+    // Единая лента дохода: автоматические платежи ЮKassa + внесённые вручную.
     const { rows } = await pool.query(`
-      SELECT s.*, o.name AS org_name
+      SELECT s.id, s.org_id, s.plan::text AS plan, s.amount_kopecks, s.occurred_at, s.note,
+             'manual' AS source, o.name AS org_name
       FROM subscription_events s
       JOIN organizations o ON s.org_id = o.id
-      ORDER BY s.occurred_at DESC, s.created_at DESC
+      UNION ALL
+      SELECT b.id, b.org_id, b.plan::text AS plan, b.amount_kopecks, b.confirmed_at::date AS occurred_at,
+             NULL AS note, 'yookassa' AS source, o.name AS org_name
+      FROM billing_transactions b
+      JOIN organizations o ON b.org_id = o.id
+      WHERE b.status = 'succeeded'
+      ORDER BY occurred_at DESC
     `);
-    const total = await pool.query(`SELECT COALESCE(SUM(amount_kopecks), 0) AS total FROM subscription_events`);
+    const total = rows.reduce((sum, r) => sum + Number(r.amount_kopecks), 0);
     return ok(res, {
       items: rows.map(r => ({ ...r, amount_display: fmt(r.amount_kopecks) })),
-      total_gross: { kopecks: +total.rows[0].total, display: fmt(total.rows[0].total) },
+      total_gross: { kopecks: total, display: fmt(total) },
     });
   } catch (e) {
     return dbErr(res, e, '[admin revenue list]');

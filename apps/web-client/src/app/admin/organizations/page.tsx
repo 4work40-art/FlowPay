@@ -75,12 +75,16 @@ export default function AdminOrganizationsPage() {
                   <td>{PLAN_LABEL[o.plan] ?? o.plan} <span style={{ color: 'var(--text2)', fontSize: 11 }}>· лимит {o.invoice_limit}</span></td>
                   <td>{o.user_count}</td>
                   <td>{o.invoice_count}</td>
-                  <td style={{ fontWeight: 600 }}>{o.debt_display}</td>
+                  <td className="tnum" style={{ fontWeight: 600 }}>{o.debt_display}</td>
                   <td style={{ color: 'var(--text2)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('ru-RU')}</td>
                   <td>
-                    <span className={`status-badge ${o.is_active ? 'status-PAID' : 'status-CREATED'}`}>
-                      {o.is_active ? 'Активна' : 'Отключена'}
-                    </span>
+                    {!o.is_active ? (
+                      <span className="health-chip bad"><i />Отключена</span>
+                    ) : Number(o.debt_kopecks) > 0 ? (
+                      <span className="health-chip warn"><i />Есть долг</span>
+                    ) : (
+                      <span className="health-chip good"><i />Стабильно</span>
+                    )}
                   </td>
                 </tr>
               ))}
