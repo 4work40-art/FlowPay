@@ -197,7 +197,8 @@ router.get('/engagement', authMiddleware, requirePlatformAdmin, async (req, res)
       LEFT JOIN invoices i ON i.org_id = o.id
       LEFT JOIN payments p ON p.org_id = o.id
       GROUP BY o.id
-      ORDER BY (invoices_30d + payments_30d) DESC
+      ORDER BY (COUNT(DISTINCT i.id) FILTER (WHERE i.created_at >= NOW() - INTERVAL '30 days')
+              + COUNT(DISTINCT p.id) FILTER (WHERE p.created_at >= NOW() - INTERVAL '30 days')) DESC
       LIMIT 10
     `);
 
