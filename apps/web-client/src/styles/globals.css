@@ -23,14 +23,20 @@
   --gray:        #888780;
   --gray-light:  #F1EFE8;
   --gray-dark:   #444441;
-  --bg:          #F8F8F6;
+
+  /* accent — золото (утверждено 2026-07-13) */
+  --gold:        #B98A32;
+  --gold-light:  #F1E2C2;
+  --gold-dark:   #8C6421;
+
+  --bg:          #FBF8F2;
   --bg2:         #FFFFFF;
-  --border:      #E5E3DC;
-  --text:        #1A1A18;
-  --text2:       #6B6962;
+  --border:      #E6DCC7;
+  --text:        #2A241C;
+  --text2:       #6B6154;
   --radius:      10px;
   --radius-sm:   6px;
-  --shadow:      0 1px 3px rgba(0,0,0,.08);
+  --shadow:      0 1px 3px rgba(42,36,28,.06);
 }
 
 body {
@@ -42,7 +48,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--blue); text-decoration: none; }
+a { color: var(--gold-dark); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { cursor: pointer; font-family: inherit; }
 input, select, textarea {
@@ -57,7 +63,7 @@ input, select, textarea {
   transition: border-color .15s;
   width: 100%;
 }
-input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24,95,165,.1); }
+input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(185,138,50,.15); }
 
 /* ─── LAYOUT ──────────────────────────────────── */
 .app-shell {
@@ -100,7 +106,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   border-left: 2px solid transparent;
 }
 .nav-item:hover { background: var(--bg); color: var(--text); text-decoration: none; }
-.nav-item.active { color: var(--blue); background: var(--blue-light); border-left-color: var(--blue); font-weight: 500; }
+.nav-item.active { color: var(--gold-dark); background: var(--gold-light); border-left-color: var(--gold); font-weight: 500; }
 
 .sidebar-footer {
   padding: 12px 16px;
@@ -112,8 +118,8 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
 .avatar {
   width: 30px; height: 30px;
   border-radius: 50%;
-  background: var(--blue-light);
-  color: var(--blue-dark);
+  background: var(--gold-light);
+  color: var(--gold-dark);
   font-size: 11px;
   font-weight: 600;
   display: flex;
@@ -207,7 +213,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   .sidebar-logo-sub { display: none; }
   .sidebar-nav { flex: 0 0 auto; display: flex; padding: 0; }
   .nav-item { flex-direction: column; gap: 2px; padding: 8px 10px; font-size: 10px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; }
-  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--blue); }
+  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--gold); }
   .sidebar-footer { border-top: none; flex-shrink: 0; padding: 8px 12px; }
   .avatar-role { display: none; }
   .main-content { padding: 12px; overflow-y: visible; }
@@ -275,8 +281,8 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg); text-decoration: none; }
-.btn-primary { background: var(--blue); color: white; border-color: var(--blue); }
-.btn-primary:hover { background: var(--blue-dark); }
+.btn-primary { background: var(--gold); color: white; border-color: var(--gold); }
+.btn-primary:hover { background: var(--gold-dark); }
 .btn-green  { background: var(--green); color: white; border-color: var(--green); }
 .btn-green:hover  { background: var(--green-dark); }
 .btn-amber  { background: var(--amber-light); color: var(--amber-dark); border-color: var(--amber); }
@@ -295,7 +301,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   width: 100%;
   padding: 12px;
   margin-top: 14px;
-  background: var(--blue);
+  background: var(--gold);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -304,7 +310,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   text-decoration: none;
   transition: background .15s;
 }
-.btn-cta:hover { background: var(--blue-dark); text-decoration: none; }
+.btn-cta:hover { background: var(--gold-dark); text-decoration: none; }
 
 /* ─── VIEW TOGGLE ────────────────────────────── */
 .view-toggle {
@@ -321,7 +327,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   color: var(--text2);
   transition: all .15s;
 }
-.view-toggle-btn.active { background: var(--blue-light); color: var(--blue-dark); font-weight: 500; }
+.view-toggle-btn.active { background: var(--gold-light); color: var(--gold-dark); font-weight: 500; }
 .view-toggle-btn:hover:not(.active) { background: var(--bg); }
 
 /* ─── FILTER PILLS ───────────────────────────── */
@@ -335,7 +341,7 @@ input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgb
   color: var(--text2);
   transition: all .15s;
 }
-.filter-pill.active { background: var(--blue); color: white; border-color: var(--blue); }
+.filter-pill.active { background: var(--gold); color: white; border-color: var(--gold); }
 .filter-pill:hover:not(.active) { background: var(--gray-light); }
 
 /* ─── STATUS BADGES ──────────────────────────── */
@@ -462,6 +468,22 @@ tr.clickable:hover td { background: #FAFAF8; }
 .audit-action { font-family: monospace; font-size: 11px; color: var(--blue-dark); flex-shrink: 0; }
 .audit-detail { flex: 1; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-time   { font-size: 11px; color: var(--text2); flex-shrink: 0; }
+
+/* ─── GAUGE (спидометр) ──────────────────────── */
+.gauge-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.gauge { position: relative; width: 108px; height: 60px; overflow: hidden; }
+.gauge .gauge-track, .gauge .gauge-fill {
+  position: absolute; top: 0; left: 0; width: 108px; height: 108px; border-radius: 50%;
+  clip-path: inset(0 0 50% 0);
+}
+.gauge .gauge-track { background: conic-gradient(from 180deg, var(--gray-light) 0deg, var(--gray-light) 180deg, transparent 180deg); }
+.gauge .gauge-fill { background: conic-gradient(from 180deg, var(--gold-dark) 0deg, var(--gold) var(--gauge-deg, 90deg), transparent var(--gauge-deg, 90deg)); }
+.gauge .gauge-mask { position: absolute; top: 9px; left: 9px; width: 90px; height: 90px; border-radius: 50%; background: var(--bg2); clip-path: inset(0 0 50% 0); }
+.gauge .gauge-needle {
+  position: absolute; left: 54px; bottom: 0; width: 2px; height: 47px; background: var(--text);
+  transform-origin: bottom center; transform: rotate(var(--gauge-rot, 0deg)); border-radius: 2px;
+}
+.gauge .gauge-needle::after { content: ""; position: absolute; bottom: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); }
 
 /* ─── MONO ───────────────────────────────────── */
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
