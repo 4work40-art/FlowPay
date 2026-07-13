@@ -31,6 +31,10 @@ export default function AdminOverviewPage() {
   if (!data) return null;
 
   const maxGrowth = Math.max(1, ...data.growth.map(g => g.organizations));
+  const coverage = data.invoices > 0 ? Math.min(100, Math.round((data.payments / data.invoices) * 100)) : 0;
+  const outstanding = 100 - coverage;
+  const gaugeDeg = (pct: number) => `${pct * 1.8}deg`;
+  const gaugeRot = (pct: number) => `${pct * 1.8 - 90}deg`;
 
   return (
     <div>
@@ -44,7 +48,7 @@ export default function AdminOverviewPage() {
       <AdminTabs />
 
       <div className="metric-grid">
-        <div className="metric-card blue">
+        <div className="metric-card feature">
           <div className="metric-label">Организаций</div>
           <div className="metric-value">{data.organizations}</div>
         </div>
@@ -70,21 +74,17 @@ export default function AdminOverviewPage() {
         <div className="card">
           <div className="card-header">Рост: новые организации по неделям</div>
           <div className="card-body">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100 }}>
+            <div className="sparkbar">
               {data.growth.map(g => (
-                <div key={g.week} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }} title={`${g.week}: ${g.organizations}`}>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: Math.max(3, (g.organizations / maxGrowth) * 80),
-                      background: g.organizations ? 'var(--blue)' : 'var(--border)',
-                      borderRadius: 2,
-                    }}
-                  />
-                </div>
+                <b
+                  key={g.week}
+                  className={g.organizations ? '' : 'zero'}
+                  style={{ height: `${Math.max(3, (g.organizations / maxGrowth) * 100)}%` }}
+                  title={`${g.week}: ${g.organizations}`}
+                />
               ))}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text2)', marginTop: 6 }}>
+            <div className="sparkbar-axis">
               <span>{data.growth[0]?.week.slice(5)}</span>
               <span>{data.growth[data.growth.length - 1]?.week.slice(5)}</span>
             </div>
@@ -92,16 +92,52 @@ export default function AdminOverviewPage() {
         </div>
 
         <div className="card">
-          <div className="card-header">Распределение по тарифам</div>
+          <div className="card-header">Здоровье сборов платформы</div>
           <div className="card-body">
-            {Object.entries(data.plan_distribution).length === 0 && <div className="empty-state">Нет данных</div>}
-            {Object.entries(data.plan_distribution).map(([plan, count]) => (
-              <div key={plan} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                <span>{PLAN_LABEL[plan] ?? plan}</span>
-                <strong>{count}</strong>
+            <div className="gauge-wrap" style={{ justifyContent: 'space-around', width: '100%' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div className="gauge" style={{ width: 140, height: 78, margin: '0 auto' }}>
+                  <div className="gauge-track" style={{ width: 140, height: 140 }} />
+                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(coverage) }} />
+                  <div className="gauge-mask" style={{ top: 11, left: 11, width: 118, height: 118 }} />
+                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(coverage) }} />
+                </div>
+                <div className="metric-value tnum" style={{ fontSize: 17 }}>{coverage}%</div>
+                <div className="metric-hint">Платежей на счёт</div>
               </div>
-            ))}
+              <div style={{ textAlign: 'center' }}>
+                <div className="gauge" style={{ width: 140, height: 78, margin: '0 auto' }}>
+                  <div className="gauge-track" style={{ width: 140, height: 140 }} />
+                  <div className="gauge-fill" style={{ width: 140, height: 140, ['--gauge-deg' as any]: gaugeDeg(outstanding) }} />
+                  <div className="gauge-mask" style={{ top: 11, left: 11, width: 118, height: 118 }} />
+                  <div className="gauge-needle" style={{ left: 70, height: 62, ['--gauge-rot' as any]: gaugeRot(outstanding) }} />
+                </div>
+                <div className="metric-value tnum" style={{ fontSize: 17 }}>{outstanding}%</div>
+                <div className="metric-hint">Не закрыто платежами</div>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header">Распределение по тарифам</div>
+        <div className="card-body">
+          {Object.entries(data.plan_distribution).length === 0 && <div className="empty-state">Нет данных</div>}
+          {Object.entries(data.plan_distribution).map(([plan, count]) => {
+            const maxPlan = Math.max(1, ...Object.values(data.plan_distribution));
+            return (
+              <div key={plan} className="progress-track-row">
+                <div className="progress-track-top">
+                  <span>{PLAN_LABEL[plan] ?? plan}</span>
+                  <strong className="tnum">{count}</strong>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-track-fill" style={{ width: `${(count / maxPlan) * 100}%` }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

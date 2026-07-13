@@ -186,7 +186,7 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
   padding: 14px 16px;
 }
 .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
-.metric-value { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.metric-value { font-size: 22px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .metric-hint  { font-size: 11px; color: var(--text2); margin-top: 3px; }
 
 .metric-card.red    { background: var(--red-light);    } .metric-card.red    .metric-value { color: var(--red); }
@@ -194,6 +194,11 @@ input:focus, select:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgb
 .metric-card.green  { background: var(--green-light);  } .metric-card.green  .metric-value { color: var(--green-dark); }
 .metric-card.blue   { background: var(--blue-light);   } .metric-card.blue   .metric-value { color: var(--blue-dark); }
 .metric-card.purple { background: var(--purple-light); } .metric-card.purple .metric-value { color: var(--purple-dark); }
+.metric-card.feature {
+  background: linear-gradient(155deg, var(--gold-light), var(--gray-light));
+  border: 1px solid #E6CE97;
+}
+.metric-card.feature .metric-value { color: var(--gold-dark); }
 
 /* ─── 2-COL GRID ─────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -420,7 +425,7 @@ tr.clickable:hover td { background: #FAFAF8; }
   box-shadow: var(--shadow);
 }
 .debt-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
-.debt-value { font-size: 32px; font-weight: 700; color: var(--red); }
+.debt-value { font-size: 32px; font-weight: 700; color: var(--red); font-variant-numeric: tabular-nums; }
 .debt-sub   { font-size: 12px; color: var(--text2); margin-top: 4px; }
 
 /* ─── PROGRESS BAR ───────────────────────────── */
@@ -484,6 +489,36 @@ tr.clickable:hover td { background: #FAFAF8; }
   transform-origin: bottom center; transform: rotate(var(--gauge-rot, 0deg)); border-radius: 2px;
 }
 .gauge .gauge-needle::after { content: ""; position: absolute; bottom: -4px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); }
+
+/* ─── SPARKBAR (недельный рост) ──────────────── */
+.sparkbar { display: flex; align-items: flex-end; gap: 4px; height: 96px; }
+.sparkbar b {
+  flex: 1; display: block; border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--gold), var(--gold-dark));
+  min-height: 3px;
+}
+.sparkbar b.zero { background: var(--border); }
+.sparkbar-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--text2); margin-top: 6px; }
+
+/* ─── PROGRESS TRACK (доля/распределение) ─────── */
+.progress-track-row { margin-bottom: 11px; }
+.progress-track-row:last-child { margin-bottom: 0; }
+.progress-track-top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }
+.progress-track { height: 7px; border-radius: 99px; background: var(--gray-light); overflow: hidden; }
+.progress-track-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold-dark), var(--gold)); }
+
+/* ─── HEALTH CHIP ─────────────────────────────── */
+.health-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.health-chip i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.health-chip.good { background: var(--green-light); color: var(--green-dark); }
+.health-chip.warn { background: var(--amber-light); color: var(--amber-dark); }
+.health-chip.bad  { background: var(--red-light);   color: var(--red); }
+
+/* ─── TABULAR NUMS ────────────────────────────── */
+.tnum { font-variant-numeric: tabular-nums; }
 
 /* ─── MONO ───────────────────────────────────── */
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
