@@ -72,6 +72,22 @@ CREATE TABLE invoices (
 CREATE INDEX ON invoices(org_id);
 CREATE INDEX ON invoices(status);
 CREATE INDEX ON invoices(due_date);
+
+CREATE TABLE invoice_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  quantity NUMERIC(14,3) NOT NULL CHECK (quantity > 0),
+  unit VARCHAR(50),
+  unit_price_kopecks BIGINT NOT NULL CHECK (unit_price_kopecks > 0),
+  amount_kopecks BIGINT NOT NULL CHECK (amount_kopecks > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX ON invoice_items(org_id);
+CREATE INDEX ON invoice_items(invoice_id);
+CREATE INDEX invoice_items_org_name_idx ON invoice_items(org_id, lower(trim(name)));
 CREATE INDEX ON invoices(org_id,status);
 
 CREATE TABLE payments (

@@ -222,6 +222,8 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
+      <ItemsCard invoiceId={id} items={inv.items ?? []} onChanged={load} />
+
       <div className="card">
         <div className="card-header">История платежей</div>
         <div className="table-wrap">
@@ -253,6 +255,99 @@ export default function InvoiceDetailPage() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+type InvoiceItem = {
+  id: string; name: string; quantity: string; unit: string | null;
+  unit_price_kopecks: number; unit_price_display: string; amount_display: string;
+};
+
+// Товары/услуги по счёту — основа учёта закупок (количество, цена за
+// единицу; дальше по ним считается динамика цены и сезонность на странице
+// «Аналитика»). Необязательно — счёт можно вести и одной суммой.
+function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: InvoiceItem[]; onChanged: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [unit, setUnit] = useState('шт');
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const q = Number(quantity.replace(',', '.'));
+    const p = Number(price.replace(',', '.'));
+    if (!name.trim()) { setError('Укажите название'); return; }
+    if (!q || q <= 0) { setError('Укажите количество больше нуля'); return; }
+    if (!p || p <= 0) { setError('Укажите цену больше нуля'); return; }
+
+    setSaving(true);
+    try {
+      await api.invoices.addItem(invoiceId, { name: name.trim(), quantity: q, unit: unit || undefined, unit_price_kopecks: Math.round(p * 100) });
+      setName(''); setQuantity('1'); setPrice('');
+      setShowForm(false);
+      onChanged();
+    } catch (e: any) {
+      setError(e.message || 'Не удалось добавить позицию');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (itemId: string) => {
+    if (!confirm('Удалить позицию?')) return;
+    try {
+      await api.invoices.deleteItem(invoiceId, itemId);
+      onChanged();
+    } catch (e: any) {
+      alert(e.message || 'Не удалось удалить позицию');
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span>Товары/услуги</span>
+        <button className="btn btn-sm" onClick={() => setShowForm(s => !s)}>{showForm ? '× Отмена' : '+ Добавить позицию'}</button>
+      </div>
+
+      {showForm && (
+        <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
+          <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <input style={{ flex: 3, minWidth: 160 }} placeholder="Наименование" value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <input style={{ flex: 1, minWidth: 70 }} placeholder="Кол-во" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} />
+            <input style={{ flex: 1, minWidth: 70 }} placeholder="Ед." value={unit} onChange={e => setUnit(e.target.value)} />
+            <input style={{ flex: 1, minWidth: 90 }} placeholder="Цена, ₽" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} />
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Сохраняем…' : 'Добавить'}</button>
+          </form>
+          {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Цена</th><th>Сумма</th><th></th></tr>
+          </thead>
+          <tbody>
+            {items.map(it => (
+              <tr key={it.id}>
+                <td>{it.name}</td>
+                <td>{it.quantity}</td>
+                <td>{it.unit ?? '—'}</td>
+                <td>{it.unit_price_display}</td>
+                <td style={{ fontWeight: 600 }}>{it.amount_display}</td>
+                <td><button className="btn btn-sm" onClick={() => remove(it.id)}>✕</button></td>
+              </tr>
+            ))}
+            {!items.length && <tr><td colSpan={6} className="empty-state">Позиции не добавлены</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

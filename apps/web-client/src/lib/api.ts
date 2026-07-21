@@ -6,6 +6,10 @@ export function apiUrl(path: string): string {
   return `${BASE}${path}`;
 }
 
+// Позиция счёта (товар/услуга) — учёт купленного: количество, цена за
+// единицу; сумма позиции всегда пересчитывается на сервере.
+export type InvoiceItemInput = { name: string; quantity: number; unit?: string; unit_price_kopecks: number };
+
 // Строка распознанного реестра счетов (POST /documents/recognize-register)
 export type RegisterRow = {
   row: number;
@@ -63,7 +67,9 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
   const data = await res.json();
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+    const e = new Error(msg) as Error & { code?: string };
+    e.code = data?.error?.code;
+    throw e;
   }
   return data;
 }
@@ -107,11 +113,16 @@ export const api = {
       due_date?: string;
       invoice_date?: string;
       notes?: string;
+      items?: InvoiceItemInput[];
     }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
     transition: (id: string, transition: string, reason?: string) =>
       req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
     setPublic: (id: string, enabled: boolean) =>
       req(`/invoices/${id}/public`, { method:'PATCH', body:JSON.stringify({ enabled }) }),
+    addItem: (invoiceId: string, item: InvoiceItemInput) =>
+      req(`/invoices/${invoiceId}/items`, { method:'POST', body:JSON.stringify(item) }),
+    deleteItem: (invoiceId: string, itemId: string) =>
+      req(`/invoices/${invoiceId}/items/${itemId}`, { method:'DELETE' }),
     // Массовое создание счетов из проверенного пользователем реестра.
     bulkCreate: (items: BulkInvoiceItem[]): Promise<{
       success: true;
@@ -201,6 +212,7 @@ export const api = {
       method?: string;
       reference?: string;
       payment_date?: string;
+      force?: boolean;
     }) => req('/payments', { method:'POST', body:JSON.stringify(body) }),
     importBankStatement: async (file: File) => {
       const token = getStoredToken();
