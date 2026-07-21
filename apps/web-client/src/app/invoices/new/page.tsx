@@ -17,6 +17,7 @@ export default function NewInvoicePage() {
   const [error,    setError]    = useState('');
   const [saving,   setSaving]   = useState(false);
   const [recognizedNotice, setRecognizedNotice] = useState('');
+  const [counterpartyNotice, setCounterpartyNotice] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
 
   const loadCounterparties = () =>
@@ -42,6 +43,7 @@ export default function NewInvoicePage() {
     if (f.amount_kopecks) setAmount(String(f.amount_kopecks / 100));
     if (f.number) setNumber(f.number);
     if (f.invoice_date) setInvoiceDate(f.invoice_date);
+    if (f.due_date) setDueDate(f.due_date);
 
     // Счёт-фактура/УПД называет стороны "продавец/покупатель", обычный счёт —
     // "поставщик"; приводим к одному имени и ИНН для дальнейшего сопоставления.
@@ -49,14 +51,22 @@ export default function NewInvoicePage() {
     const inn = r.doc_type === 'invoice_for_vat' ? f.seller_inn : (f.inn ?? f.inns?.[0] ?? null);
     const kpp = r.doc_type === 'invoice_for_vat' ? f.kpps?.[0] : f.kpp;
 
-    // Пытаемся сопоставить контрагента по ИНН среди уже существующих;
-    // не находим — предлагаем создать нового прямо из распознанных данных,
-    // включая ОГРН/адрес/банковские реквизиты, если счёт их указывает —
-    // чтобы не приходилось вбивать их вручную при следующей оплате.
-    if (inn) {
-      const existing = counterparties.find(c => c.inn === inn);
+    // Автоматически подставляем контрагента, чтобы не заставлять пользователя
+    // переходить в раздел «Контрагенты»: сначала ищем среди уже существующих
+    // по ИНН (надёжнее всего), затем — по названию (без учёта регистра и
+    // пробелов, на случай если ИНН распознать не удалось) и только если
+    // совпадения нет — создаём нового. Такой порядок исключает дубли даже
+    // когда OCR не смог прочитать ИНН.
+    setCounterpartyNotice('');
+    if (supplierName || inn) {
+      const normalizedName = supplierName?.trim().toLowerCase();
+      const existing = (inn && counterparties.find(c => c.inn === inn))
+        || (normalizedName && counterparties.find(c => c.name.trim().toLowerCase() === normalizedName))
+        || null;
+
       if (existing) {
         setCpId(existing.id);
+        setCounterpartyNotice(`Контрагент «${existing.name}» уже есть в списке — выбран автоматически.`);
       } else if (supplierName) {
         try {
           const created = await api.counterparties.create({
@@ -67,8 +77,10 @@ export default function NewInvoicePage() {
           });
           await loadCounterparties();
           setCpId(created.data.id);
+          setCounterpartyNotice(`Контрагент «${supplierName}» создан автоматически по данным из файла — проверьте карточку в разделе «Контрагенты».`);
         } catch {
           // ИНН/название/реквизиты не прошли валидацию — не страшно, пользователь выберет контрагента вручную
+          setCounterpartyNotice(`Не удалось создать контрагента «${supplierName}» автоматически (реквизиты не прошли проверку) — выберите его вручную или добавьте на странице «Контрагенты».`);
         }
       }
     }
@@ -115,6 +127,11 @@ export default function NewInvoicePage() {
             {recognizedNotice && (
               <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
                 {recognizedNotice}
+              </div>
+            )}
+            {counterpartyNotice && (
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--green-light, #e8f5ee)', color: 'var(--green-dark, #1a7a4c)' }}>
+                {counterpartyNotice}
               </div>
             )}
             {error && <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>}

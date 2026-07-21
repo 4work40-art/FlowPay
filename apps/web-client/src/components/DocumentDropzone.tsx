@@ -15,6 +15,7 @@ export type RecognizedInvoice = {
   fields: {
     number: string | null;
     invoice_date: string | null;
+    due_date?: string | null;
     amount_kopecks: number | null;
     supplier_name: string | null;
     inn: string | null;
@@ -66,6 +67,16 @@ export type Recognized = RecognizedInvoice | RecognizedInvoiceForVat | Recognize
 // PDF с текстовым слоем читается напрямую, скан или фото — через OCR.
 // Результат — черновик полей, форма ниже должна дать пользователю проверить
 // и поправить их перед сохранением: распознавание эвристическое, не 100%-ное.
+const EXCEL_EXT = /\.(xlsx|xls|csv)$/i;
+
+// Доля непустых полей — тот же принцип, что и confidence на бэкенде для
+// PDF/фото, только здесь считаем на клиенте, так как строка реестра уже
+// пришла в готовом виде из recognize-register.
+function excelRowConfidence(row: { number: any; invoice_date: any; amount_kopecks: any; counterparty_name: any; counterparty_inn: any }) {
+  const fields = [row.number, row.invoice_date, row.amount_kopecks, row.counterparty_name, row.counterparty_inn];
+  return Math.round((fields.filter(v => v !== null && v !== undefined).length / fields.length) * 100);
+}
+
 export default function DocumentDropzone({ onRecognized }: { onRecognized: (r: Recognized) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -76,6 +87,31 @@ export default function DocumentDropzone({ onRecognized }: { onRecognized: (r: R
     setError('');
     setBusy(true);
     try {
+      // Excel/CSV — это не скан счёта, а таблица (Excel-выгрузка счёта из 1С
+      // тоже часто содержит всего одну строку данных — распознаём её как
+      // обычный счёт; реестр из нескольких строк — не файл для этой формы,
+      // отправляем на страницу пакетного импорта, а не гадаем, какая строка нужна).
+      if (EXCEL_EXT.test(file.name)) {
+        const res = await api.documents.recognizeRegister(file);
+        const items = res.data.items;
+        if (items.length > 1) {
+          setError(`В файле ${items.length} строк — это похоже на реестр счетов, а не на один счёт. Загрузите его на странице «Импорт реестра».`);
+          return;
+        }
+        const row = items[0];
+        const recognized: RecognizedInvoice = {
+          doc_type: 'invoice',
+          fields: {
+            number: row.number, invoice_date: row.invoice_date, due_date: row.due_date,
+            amount_kopecks: row.amount_kopecks, supplier_name: row.counterparty_name,
+            inn: row.counterparty_inn, kpp: null, ogrn: null, address: null,
+          },
+          confidence: excelRowConfidence(row),
+        };
+        onRecognized(recognized);
+        return;
+      }
+
       const res = await api.documents.recognize(file);
       onRecognized(res.data);
     } catch (e: any) {
@@ -103,7 +139,7 @@ export default function DocumentDropzone({ onRecognized }: { onRecognized: (r: R
     >
       <div className="card-body" style={{ textAlign: 'center', padding: '20px 16px' }}>
         <input
-          ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+          ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
         />
         {busy ? (
@@ -115,7 +151,7 @@ export default function DocumentDropzone({ onRecognized }: { onRecognized: (r: R
               Перетащите сюда счёт на оплату или платёжное поручение
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 10 }}>
-              PDF, JPG или PNG — поля формы заполнятся автоматически, проверьте перед сохранением
+              PDF, JPG, PNG или Excel/CSV — поля формы заполнятся автоматически, проверьте перед сохранением
             </div>
             <button type="button" className="btn btn-sm" onClick={() => inputRef.current?.click()}>
               Выбрать файл
