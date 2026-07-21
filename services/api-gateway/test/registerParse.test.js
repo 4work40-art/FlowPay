@@ -1,8 +1,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 const {
-  parseCsvRegister, parseExcelRegister, parseAmountToKopecks, normalizeDate, MAX_ROWS,
+  parseCsvRegister, parseExcelRegister, parseAmountToKopecks, normalizeDate, pickHeaderRow, MAX_ROWS,
 } = require('../src/lib/registerParse');
 
 test('parseAmountToKopecks: запятая/точка, пробелы-разделители тысяч', () => {
@@ -131,4 +132,64 @@ test('parseExcelRegister: сумма не распознана -> warning вме
   assert.strictEqual(items.length, 1);
   assert.strictEqual(items[0].amount_kopecks, null);
   assert.ok(items[0].warnings.includes('Не удалось распознать сумму'));
+});
+
+test('parseExcelRegister: строка-заголовок документа перед настоящей шапкой таблицы не путается с ней', async () => {
+  const buf = await buildWorkbookBuffer(
+    ['Реестр счетов на оплату за июль 2026'],
+    [
+      [],
+      ['Номер счёта', 'Сумма, руб.', 'Контрагент'],
+      ['301', '50000', 'ООО Тюльпан'],
+    ]
+  );
+  const items = await parseExcelRegister(buf);
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].number, '301');
+  assert.strictEqual(items[0].amount_kopecks, 5000000);
+  assert.strictEqual(items[0].counterparty_name, 'ООО Тюльпан');
+});
+
+// Реальные выгрузки из 1С/старых бухгалтерских программ нередко приходят в
+// устаревшем бинарном формате (Excel 97-2003, OLE2/BIFF) несмотря на
+// расширение .xls — ExcelJS такой файл прочитать не может (понимает только
+// OOXML/.xlsx) и раньше это приводило к общей ошибке «не удалось разобрать
+// файл» без объяснения причины. Регресс-тест на фолбэк через SheetJS.
+test('parseExcelRegister: устаревший бинарный формат .xls (OLE2/BIFF) читается через фолбэк', async () => {
+  const wb = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['Номер счёта', 'Сумма, руб.', 'Контрагент', 'ИНН'],
+    ['300', 134232, 'ООО Ромашка', '7707083893'],
+  ]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'biff8' }); // legacy .xls (OLE2)
+  assert.strictEqual(buf.slice(0, 4).toString('hex'), 'd0cf11e0'); // сигнатура OLE2 — убеждаемся, что тест честный
+
+  const items = await parseExcelRegister(buf);
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].number, '300');
+  assert.strictEqual(items[0].amount_kopecks, 13423200);
+  assert.strictEqual(items[0].counterparty_name, 'ООО Ромашка');
+  assert.strictEqual(items[0].counterparty_inn, '7707083893');
+});
+
+test('parseExcelRegister: произвольный текст не роняет разбор — SheetJS трактует его как таблицу из одной ячейки без данных', async () => {
+  // Ни ExcelJS (только OOXML), ни бинарный OLE2-разбор здесь неприменимы;
+  // SheetJS в фолбэке достаточно терпим и не бросает исключение на любой
+  // байтовый мусор — в этом случае просто не находит строк данных, а не
+  // выдаёт первую попавшуюся ошибку с нижнего уровня библиотеки. Итоговое
+  // сообщение пользователю «реестр пуст» формирует уже роут-обработчик.
+  const items = await parseExcelRegister(Buffer.from('это не Excel и не OLE2, просто текст'));
+  assert.deepStrictEqual(items, []);
+});
+
+test('pickHeaderRow: выбирает строку с наибольшим числом распознанных колонок', () => {
+  const rows = [
+    ['Реестр счетов'],
+    [],
+    ['Номер', 'Сумма', 'ИНН'],
+  ];
+  const { idx, score } = pickHeaderRow(rows);
+  assert.strictEqual(idx, 2);
+  assert.strictEqual(score, 3);
 });

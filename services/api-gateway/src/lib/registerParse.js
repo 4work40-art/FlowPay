@@ -7,6 +7,9 @@ const ExcelJS = require('exceljs');
 const { isValidInn } = require('./inn');
 
 const MAX_ROWS = 500;
+const HEADER_SEARCH_ROWS = 5; // шапка таблицы не всегда в первой строке —
+// у реальных выгрузок часто есть строка-заголовок документа перед таблицей
+// ("Реестр счетов на оплату"), проверяем первые несколько строк.
 
 // Заголовки в реестрах из разных систем называются по-разному —
 // сопоставляем по набору синонимов, регистронезависимо, с учётом
@@ -29,7 +32,7 @@ function normalizeHeader(h) {
     .replace(/\s+/g, ' ');
 }
 
-// Строит карту { columnIndex(0-based): fieldName } по строке заголовков.
+// Строит карту { fieldName: columnIndex(0-based) } по строке заголовков.
 function detectColumns(headerCells) {
   const map = {};
   headerCells.forEach((cell, idx) => {
@@ -41,6 +44,21 @@ function detectColumns(headerCells) {
     }
   });
   return map;
+}
+
+// Ищем строку заголовков среди первых нескольких строк файла — берём ту,
+// где нашлось больше всего распознанных колонок (при равенстве — более
+// раннюю). Так строка-название документа перед настоящей шапкой таблицы
+// не принимается за шапку.
+function pickHeaderRow(rowsOfCells) {
+  let best = { idx: 0, colMap: {}, score: -1 };
+  const limit = Math.min(HEADER_SEARCH_ROWS, rowsOfCells.length);
+  for (let i = 0; i < limit; i++) {
+    const colMap = detectColumns(rowsOfCells[i]);
+    const score = Object.keys(colMap).length;
+    if (score > best.score) best = { idx: i, colMap, score };
+  }
+  return best;
 }
 
 // Сумма в реестре — в рублях, с запятой или точкой как разделителем
@@ -128,9 +146,22 @@ function buildItem(rowIndex, colMap, cells) {
   };
 }
 
-// text — уже декодированный CSV-текст (см. decodeStatement в statementParse.js
-// для похожей задачи с кодировками — здесь предполагаем, что вызывающий
-// код при необходимости декодирует буфер сам).
+// Общий конвейер: массив строк-массивов ячеек (как для CSV, так и для
+// Excel после чтения любым из движков) -> найти шапку -> собрать элементы.
+// rowNumberOf(idx) переводит индекс в массиве в "человеческий" номер строки
+// файла (для CSV это idx+1, для Excel — фактический номер строки листа).
+function rowsToItems(rows, rowNumberOf) {
+  if (!rows.length) return [];
+  const header = pickHeaderRow(rows);
+  const items = [];
+  for (let i = header.idx + 1; i < rows.length; i++) {
+    const cells = rows[i];
+    if (!cells || !cells.some(c => c !== undefined && c !== null && String(c).trim() !== '')) continue; // пустая строка
+    items.push(buildItem(rowNumberOf(i), header.colMap, cells));
+  }
+  return items;
+}
+
 function parseCsvRegister(buffer) {
   const text = buffer.toString('utf-8');
   const lines = text.split(/\r?\n/).map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '');
@@ -157,43 +188,67 @@ function parseCsvRegister(buffer) {
     throw new Error(`Реестр слишком велик: максимум ${MAX_ROWS} строк данных (без заголовка)`);
   }
 
-  const colMap = detectColumns(rows[0]);
-  const dataRows = rows.slice(1);
-
-  return dataRows.map((cells, idx) => buildItem(idx + 2, colMap, cells)); // +2: строка 1 — заголовок, нумерация с 1
+  return rowsToItems(rows, (idx) => idx + 1); // нумерация строк файла с 1
 }
 
-async function parseExcelRegister(buffer) {
+// Строки листа как массив массивов ячеек через ExcelJS — понимает только
+// современный формат (OOXML .xlsx), но делает это лучше всего для него
+// (даты, формулы, rich text).
+async function readRowsWithExcelJs(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error('В файле нет листов с данными');
 
-  const rowCount = sheet.actualRowCount || sheet.rowCount;
-  if (rowCount - 1 > MAX_ROWS) {
-    throw new Error(`Реестр слишком велик: максимум ${MAX_ROWS} строк данных (без заголовка)`);
-  }
-
-  const headerRow = sheet.getRow(1);
-  const headerCells = [];
-  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headerCells[colNumber - 1] = cellToText(cell.value);
-  });
-  const colMap = detectColumns(headerCells);
-
-  const items = [];
-  for (let r = 2; r <= sheet.rowCount; r++) {
-    const row = sheet.getRow(r);
-    if (row.cellCount === 0) continue;
+  const rows = [];
+  const rowNumbers = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     const cells = [];
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cells[colNumber - 1] = cellToText(cell.value);
     });
-    if (!cells.some(c => c !== undefined && c !== null && String(c).trim() !== '')) continue; // пустая строка
-    items.push(buildItem(r, colMap, cells));
+    rows.push(cells);
+    rowNumbers.push(rowNumber);
+  });
+  return { rows, rowNumbers };
+}
+
+// Фолбэк на устаревший бинарный формат (Excel 97-2003, OLE2/BIFF) — такие
+// файлы по-прежнему реально приходят из 1С и старых версий бухгалтерских
+// программ несмотря на расширение .xls, и ExcelJS их не читает вообще
+// (понимает только OOXML/.xlsx). SheetJS — единственная поддерживаемая
+// npm-библиотека, читающая оба формата; используется только как fallback
+// именно для этого случая, а не как основной путь разбора.
+function readRowsWithSheetJs(buffer) {
+  const XLSX = require('xlsx');
+  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) throw new Error('В файле нет листов с данными');
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+  return { rows, rowNumbers: rows.map((_, i) => i + 1) };
+}
+
+async function parseExcelRegister(buffer) {
+  let rows, rowNumbers;
+  try {
+    ({ rows, rowNumbers } = await readRowsWithExcelJs(buffer));
+  } catch (excelJsError) {
+    try {
+      ({ rows, rowNumbers } = readRowsWithSheetJs(buffer));
+    } catch (sheetJsError) {
+      throw new Error(
+        'Не удалось прочитать файл ни как современный (.xlsx), ни как старый (.xls) формат Excel — ' +
+        'проверьте, что файл не повреждён, либо сохраните его как .xlsx или .csv и загрузите снова.'
+      );
+    }
   }
 
-  return items;
+  if (rowNumbers.length - 1 > MAX_ROWS) {
+    throw new Error(`Реестр слишком велик: максимум ${MAX_ROWS} строк данных (без заголовка)`);
+  }
+
+  return rowsToItems(rows, (idx) => rowNumbers[idx]);
 }
 
 module.exports = {
@@ -203,4 +258,5 @@ module.exports = {
   parseAmountToKopecks,
   normalizeDate,
   detectColumns,
+  pickHeaderRow,
 };
