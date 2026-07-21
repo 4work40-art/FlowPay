@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON, STATUS_DESCRIPTION } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, STATUS_DESCRIPTION, formatDateOnly } from '@/lib/api';
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 export default function InvoicesPage() {
@@ -128,7 +128,7 @@ export default function InvoicesPage() {
                     <td className="mono" style={{ color: '#888' }}>#{inv.number}</td>
                     <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
                     <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
-                    <td style={{ color: '#888', fontSize: 12 }}>{inv.due_date ?? '—'}</td>
+                    <td style={{ color: '#888', fontSize: 12 }}>{formatDateOnly(inv.due_date)}</td>
                     <td>
                       <span className={`status-badge status-${inv.status}`} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
                         {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}

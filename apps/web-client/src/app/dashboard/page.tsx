@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL, PLAN_LABEL, formatDateOnly } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 
 type Invoice = {
@@ -251,7 +251,7 @@ export default function DashboardPage() {
                               </div>
                               <div>
                                 <div className="expand-label">Срок оплаты</div>
-                                <div className="expand-value">{inv.due_date ?? '—'}</div>
+                                <div className="expand-value">{formatDateOnly(inv.due_date)}</div>
                               </div>
                             </div>
                             <div className="expand-actions">
@@ -388,7 +388,7 @@ export default function DashboardPage() {
                       <td style={{ color: inv.remaining_kopecks > 0 ? '#633806' : '#085041', fontWeight: 500 }}>
                         {inv.remaining_display}
                       </td>
-                      <td style={{ color: '#888', fontSize: 12 }}>{inv.due_date ?? '—'}</td>
+                      <td style={{ color: '#888', fontSize: 12 }}>{formatDateOnly(inv.due_date)}</td>
                       <td>
                         <span className={`status-badge status-${inv.status}`}>
                           {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}

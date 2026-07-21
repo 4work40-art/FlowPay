@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, formatDateOnly } from '@/lib/api';
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 const PAGE_SIZE = 20;
@@ -134,7 +134,7 @@ export default function PaymentsPage() {
               <tbody>
                 {payments.map(p => (
                   <tr key={p.id}>
-                    <td style={{ color: '#888', fontSize: 12 }}>{p.payment_date}</td>
+                    <td style={{ color: '#888', fontSize: 12 }}>{formatDateOnly(p.payment_date)}</td>
                     <td className="mono" style={{ color: '#888' }}>#{p.invoice_number}</td>
                     <td style={{ fontWeight: 500 }}>{p.counterparty_name || '—'}</td>
                     <td style={{ fontWeight: 600, color: '#085041' }}>{p.amount_display}</td>

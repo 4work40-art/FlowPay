@@ -305,6 +305,20 @@ export function fmt(kopecks: number | string | null | undefined): string {
   return n.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
 }
 
+// ─── Форматирование даты (DATE-поля БД: payment_date, due_date,
+// invoice_date) — ДД.ММ.ГГГГ. Разбираем строку напрямую, не через
+// new Date().toLocaleDateString(): БД отдаёт такие поля в JSON как
+// "2026-07-13T00:00:00.000Z" (полночь UTC), и создание Date из этой строки
+// с последующим переводом в локальную таймзону браузера может сдвинуть
+// дату на день назад в западных часовых поясах — сама по себе дата не
+// привязана к времени суток, поэтому просто берём ГГГГ-ММ-ДД из начала строки.
+export function formatDateOnly(value: string | null | undefined): string {
+  if (!value) return '—';
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(value);
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
 // ─── Статусы счетов ────────────────────────────────────────
 export const STATUS_LABEL: Record<string, string> = {
   CREATED:         'Создан',
