@@ -23,6 +23,8 @@ export default function NewInvoicePage() {
   const [counterpartyNotice, setCounterpartyNotice] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [itemRows, setItemRows] = useState<ItemRow[]>([]);
+  const [existingInvoice, setExistingInvoice] = useState<{ id: string; number: string; missing: string[] } | null>(null);
+  const [filling, setFilling] = useState(false);
 
   const itemsTotal = itemRows.reduce((sum, r) => {
     const q = Number(r.quantity.replace(',', '.')), p = Number(r.price.replace(',', '.'));
@@ -42,10 +44,19 @@ export default function NewInvoicePage() {
   useEffect(() => { loadCounterparties(); }, []);
 
   const handleRecognized = async (r: Recognized) => {
+    setExistingInvoice(null);
     const confidenceNote = r.confidence != null ? ` Уверенность распознавания: ${r.confidence}%.` : '';
     if (r.doc_type === 'payment_order') {
       setRecognizedNotice('В файле похоже на платёжное поручение, а не счёт — если это платёж, зафиксируйте его на странице счёта.');
       return;
+    }
+    if (r.doc_type === 'invoice' && r.existing_invoice) {
+      setExistingInvoice(r.existing_invoice);
+    }
+    if (r.doc_type === 'invoice' && Array.isArray(r.fields.items) && r.fields.items.length) {
+      setItemRows(r.fields.items.map(it => ({
+        name: it.name, quantity: String(it.quantity), unit: it.unit || 'шт', price: String(it.unit_price_kopecks / 100),
+      })));
     }
     if (r.doc_type === 'unknown') {
       setRecognizedNotice('Не удалось однозначно распознать документ — поля ниже заполнены тем, что удалось найти, проверьте перед сохранением.');
@@ -102,9 +113,28 @@ export default function NewInvoicePage() {
     }
   };
 
+  const fillMissingAndGo = async () => {
+    if (!existingInvoice) return;
+    setFilling(true);
+    setError('');
+    try {
+      await api.invoices.fillMissing(existingInvoice.id, {
+        invoice_date: invoiceDate || undefined,
+        due_date: dueDate || undefined,
+        items: validItems().length ? validItems() : undefined,
+      });
+      router.replace(`/invoices/${existingInvoice.id}`);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось дозаполнить счёт');
+    } finally {
+      setFilling(false);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (existingInvoice) { await fillMissingAndGo(); return; }
     const rub = Number(amount.replace(',', '.'));
     if (!rub || rub <= 0) { setError('Укажите сумму больше нуля'); return; }
 
@@ -142,6 +172,15 @@ export default function NewInvoicePage() {
       <div className="card" style={{ maxWidth: 560 }}>
         <div className="card-body">
           <form onSubmit={submit}>
+            {existingInvoice && (
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--amber-light, #fdf1de)', color: 'var(--amber-dark, #a06a00)' }}>
+                Счёт №{existingInvoice.number} уже есть в системе — новый счёт создан не будет.
+                {existingInvoice.missing.length > 0
+                  ? ' Дозаполним недостающие поля из этого файла и откроем существующий счёт.'
+                  : ' В нём уже заполнено всё, что удалось распознать — просто откроем его.'}
+                {' '}<a href={`/invoices/${existingInvoice.id}`}>Открыть счёт →</a>
+              </div>
+            )}
             {recognizedNotice && (
               <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
                 {recognizedNotice}
@@ -226,8 +265,10 @@ export default function NewInvoicePage() {
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Сохраняем…' : 'Создать счёт'}
+              <button type="submit" className="btn btn-primary" disabled={saving || filling}>
+                {existingInvoice
+                  ? (filling ? 'Дозаполняем…' : 'Дозаполнить и открыть счёт')
+                  : (saving ? 'Сохраняем…' : 'Создать счёт')}
               </button>
               <a href="/invoices" className="btn">Отмена</a>
             </div>

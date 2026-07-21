@@ -123,6 +123,8 @@ export const api = {
       req(`/invoices/${invoiceId}/items`, { method:'POST', body:JSON.stringify(item) }),
     deleteItem: (invoiceId: string, itemId: string) =>
       req(`/invoices/${invoiceId}/items/${itemId}`, { method:'DELETE' }),
+    fillMissing: (id: string, body: { invoice_date?: string; due_date?: string; notes?: string; items?: InvoiceItemInput[] }) =>
+      req(`/invoices/${id}/fill-missing`, { method:'PATCH', body:JSON.stringify(body) }),
     // Массовое создание счетов из проверенного пользователем реестра.
     bulkCreate: (items: BulkInvoiceItem[]): Promise<{
       success: true;

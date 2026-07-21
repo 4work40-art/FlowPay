@@ -10,6 +10,10 @@ type BankRequisites = {
 };
 type Party = ({ inn: string | null; kpp: string | null } & Partial<BankRequisites>) | null;
 
+export type RecognizedInvoiceItem = {
+  name: string; quantity: number; unit: string | null;
+  unit_price_kopecks: number; amount_kopecks: number;
+};
 export type RecognizedInvoice = {
   doc_type: 'invoice';
   fields: {
@@ -22,8 +26,17 @@ export type RecognizedInvoice = {
     kpp: string | null;
     ogrn: string | null;
     address: string | null;
+    items: RecognizedInvoiceItem[] | null;
   } & Partial<BankRequisites>;
   confidence: number | null;
+  // Счёт с таким же номером уже есть у организации — почти наверняка это
+  // повторная загрузка того же документа. Новый счёт создавать не нужно,
+  // только дозаполнить недостающие поля у существующего.
+  existing_invoice: {
+    id: string;
+    number: string;
+    missing: string[];
+  } | null;
 };
 export type RecognizedInvoiceForVat = {
   doc_type: 'invoice_for_vat';

@@ -380,4 +380,51 @@ router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
   }
 });
 
+// Счёт с таким же номером уже был загружен раньше (см. /documents/recognize) —
+// вместо создания дубля дозаполняем только те поля, которых сейчас нет
+// (никогда не перезаписываем то, что пользователь уже ввёл или поправил), и
+// добавляем позиции из распознанного файла, если у счёта их ещё нет.
+router.patch('/:id/fill-missing', authMiddleware, async (req, res) => {
+  const { invoice_date, due_date, notes, items } = req.body || {};
+  if (items !== undefined) {
+    const itemsError = validateItems(items);
+    if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
+  }
+
+  const client = await pool.connect();
+  try {
+    const { rows: invRows } = await client.query('SELECT * FROM invoices WHERE id=$1 AND org_id=$2', [req.params.id, req.user.org_id]);
+    if (!invRows.length) return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
+    const inv = invRows[0];
+
+    await client.query('BEGIN');
+    const { rows } = await client.query(`
+      UPDATE invoices SET
+        invoice_date = COALESCE(invoice_date, $1),
+        due_date = COALESCE(due_date, $2),
+        notes = COALESCE(notes, $3),
+        updated_at = NOW()
+      WHERE id=$4 RETURNING *
+    `, [invoice_date || null, due_date || null, notes || null, req.params.id]);
+
+    let itemsAdded = 0;
+    if (items?.length) {
+      const { rows: existingItems } = await client.query('SELECT id FROM invoice_items WHERE invoice_id=$1', [req.params.id]);
+      if (!existingItems.length) {
+        await insertItems(client, req.user.org_id, req.params.id, items);
+        itemsAdded = items.length;
+      }
+    }
+    await client.query('COMMIT');
+
+    await audit(req.user.org_id, req.user.id, 'invoice.filled_missing', 'invoice', req.params.id, inv, { ...rows[0], items_added: itemsAdded });
+    return ok(res, { ...rows[0], items_added: itemsAdded });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    return dbErr(res, e, '[invoice fill missing]');
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

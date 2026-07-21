@@ -95,10 +95,32 @@ router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res)
         }
       }
 
-      await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
-        null, { doc_type: result.doc_type, filename: req.file.originalname, duplicate: !!duplicate });
+      // Счёт с таким же номером уже загружался раньше — почти наверняка это
+      // повторная загрузка того же документа. Не создаём дубль: подсказываем,
+      // какой счёт уже есть и каких полей у него не хватает, чтобы форма
+      // могла дозаполнить их вместо создания нового счёта.
+      let existingInvoice = null;
+      if (result.doc_type === 'invoice' && result.fields.number) {
+        const { rows: existingRows } = await pool.query(
+          `SELECT id, number, invoice_date, due_date, notes FROM invoices
+           WHERE org_id=$1 AND lower(trim(number))=lower(trim($2)) LIMIT 1`,
+          [req.user.org_id, result.fields.number]
+        );
+        if (existingRows.length) {
+          const existing = existingRows[0];
+          const { rows: itemRows } = await pool.query('SELECT id FROM invoice_items WHERE invoice_id=$1 LIMIT 1', [existing.id]);
+          const missing = [];
+          if (!existing.invoice_date && result.fields.invoice_date) missing.push('invoice_date');
+          if (!existing.due_date && result.fields.due_date) missing.push('due_date');
+          if (!itemRows.length && result.fields.items?.length) missing.push('items');
+          existingInvoice = { id: existing.id, number: existing.number, missing };
+        }
+      }
 
-      return ok(res, { ...result, matched_invoices: matchedInvoices, duplicate });
+      await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
+        null, { doc_type: result.doc_type, filename: req.file.originalname, duplicate: !!duplicate, existing_invoice: !!existingInvoice });
+
+      return ok(res, { ...result, matched_invoices: matchedInvoices, duplicate, existing_invoice: existingInvoice });
     } catch (e) {
       console.error('[document recognize]', e.message);
       return err(res, 502, 'Не удалось распознать документ — попробуйте другой файл или введите данные вручную', 'RECOGNIZE_FAILED');
