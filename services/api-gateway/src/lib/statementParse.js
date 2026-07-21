@@ -57,6 +57,86 @@ function decodeStatement(buffer) {
   }
 }
 
+// Заголовки выписок сильно различаются между банками РФ (Сбербизнес, Тинькофф,
+// Альфа, ВТБ, Точка, Модульбанк и т.д.) — порядок и число колонок не
+// стандартизированы, в отличие от 1CClientBankExchange. Вместо жёстких
+// индексов ищем колонки по смыслу заголовка и приводим любую раскладку к
+// одному виду [дата, сумма, назначение], которым дальше пользуется импорт.
+// Если поступление/списание разнесены по отдельным колонкам («Дебет»/«Кредит»,
+// «Приход»/«Расход»), для входящих платежей (нас интересуют оплаты от
+// контрагентов) берём колонку поступления, а не любую ненулевую сумму.
+// \w не матчит кириллицу в JS-регулярках — используем "." вместо \w* для
+// суффиксов кириллических слов (та же ловушка, что и в documentRecognizer.js).
+const HEADER_PATTERNS = {
+  date: /дата\s*(операц|плат|документ|провод)?/i,
+  purpose: /назначен.{0,3}\s*плат|наименован.{0,3}\s*плат|комментар/i,
+  credit: /кредит|поступлен|приход|зачислен/i,
+  debit: /дебет|списан|расход/i,
+  amount: /^сумма/i,
+};
+
+function findHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const cells = (rows[i] || []).map(c => String(c ?? '').trim());
+    const hasDate = cells.some(c => HEADER_PATTERNS.date.test(c));
+    const hasAmount = cells.some(c => HEADER_PATTERNS.amount.test(c) || HEADER_PATTERNS.credit.test(c) || HEADER_PATTERNS.debit.test(c));
+    if (hasDate && hasAmount) return i;
+  }
+  return -1;
+}
+
+function cellDate(v) {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = String(v ?? '').trim();
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+}
+
+// Приводит строки любой раскладки (CSV или Excel-выписка любого банка РФ) к
+// каноническому виду [дата, сумма, назначение]. Если заголовок с
+// распознаваемыми колонками не найден — считаем формат уже каноническим
+// (устаревшее поведение: дата;сумма;назначение по позиции), для обратной
+// совместимости с узким CSV-парсером.
+function normalizeStatementRows(rows) {
+  const headerIdx = findHeaderRow(rows);
+  if (headerIdx === -1) return rows;
+
+  const header = rows[headerIdx].map(c => String(c ?? '').trim());
+  const dateCol = header.findIndex(h => HEADER_PATTERNS.date.test(h));
+  const purposeCol = header.findIndex(h => HEADER_PATTERNS.purpose.test(h));
+  const creditCol = header.findIndex(h => HEADER_PATTERNS.credit.test(h));
+  const debitCol = header.findIndex(h => HEADER_PATTERNS.debit.test(h));
+  const amountCol = header.findIndex(h => HEADER_PATTERNS.amount.test(h));
+  if (dateCol === -1) return rows;
+
+  const out = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const cells = rows[i];
+    if (!cells || !cells.length) continue;
+    const date = cellDate(cells[dateCol]);
+    if (!date) continue;
+
+    // Есть раздельные Дебет/Кредит — берём только поступления (входящие
+    // платежи от контрагентов), списания со счёта организации нас не
+    // интересуют для сопоставления со счетами на оплату.
+    let amount = null;
+    if (creditCol !== -1) {
+      const v = String(cells[creditCol] ?? '').trim();
+      if (v) amount = v;
+      else continue; // строка списания (Дебет заполнен, Кредит пуст) — пропускаем
+    } else if (amountCol !== -1) {
+      amount = String(cells[amountCol] ?? '').trim();
+    } else if (debitCol !== -1) {
+      continue; // только списания в файле — нет входящих платежей
+    }
+    if (!amount) continue;
+
+    const purpose = purposeCol !== -1 ? String(cells[purposeCol] ?? '').trim() : '';
+    out.push([date, amount, purpose]);
+  }
+  return out;
+}
+
 function parseAmountToKopecks(raw) {
   const normalized = raw.replace(/\s/g, '').replace(',', '.');
   const value = Number(normalized);
@@ -74,5 +154,5 @@ function purposeContainsNumber(purpose, number) {
 
 module.exports = {
   parseCsv, is1CFormat, parse1C, decodeStatement,
-  parseAmountToKopecks, purposeContainsNumber,
+  parseAmountToKopecks, purposeContainsNumber, normalizeStatementRows,
 };

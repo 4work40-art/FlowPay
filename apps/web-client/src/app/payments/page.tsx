@@ -71,9 +71,9 @@ export default function PaymentsPage() {
       <div className="page-header">
         <div className="page-title">Платежи</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <label className="btn btn-sm" style={{ cursor: 'pointer' }}>
-            {importing ? 'Импортируем…' : '📥 Импорт выписки'}
-            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} disabled={importing}
+          <label className="btn btn-sm" style={{ cursor: 'pointer' }} title="CSV, Excel-выписка любого банка РФ или файл 1С-обмена (1CClientBankExchange, .txt)">
+            {importing ? 'Импортируем…' : '📥 Импорт выписки из банка'}
+            <input type="file" accept=".csv,.txt,.xlsx,.xls,text/csv" style={{ display: 'none' }} disabled={importing}
               onChange={e => { onImportFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
           </label>
         <div style={{ position: 'relative' }}>
@@ -99,7 +99,8 @@ export default function PaymentsPage() {
       {importResult && (
         <div className="card" style={{ marginBottom: 16, padding: 14, fontSize: 13 }}>
           Импорт завершён: сопоставлено платежей — <strong>{importResult.matched_count}</strong>,
-          не удалось сопоставить — <strong>{importResult.unmatched_count}</strong>.
+          не удалось сопоставить — <strong>{importResult.unmatched_count}</strong>,
+          уже были загружены ранее — <strong>{importResult.skipped_count}</strong>.
           {importResult.unmatched_count > 0 && (
             <ul style={{ marginTop: 8, paddingLeft: 18, color: 'var(--text2)' }}>
               {importResult.unmatched.slice(0, 10).map((u: any, i: number) => (

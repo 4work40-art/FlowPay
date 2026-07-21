@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   parseCsv, is1CFormat, parse1C, decodeStatement,
-  parseAmountToKopecks, purposeContainsNumber,
+  parseAmountToKopecks, purposeContainsNumber, normalizeStatementRows,
 } = require('../src/lib/statementParse');
 
 test('parseCsv: разделитель ; и кавычки', () => {
@@ -58,4 +58,44 @@ test('decodeStatement: windows-1251 распознаётся', () => {
   const cp1251 = Buffer.from([0xd1, 0xf3, 0xec, 0xec, 0xe0]);
   assert.strictEqual(decodeStatement(cp1251), 'Сумма');
   assert.strictEqual(decodeStatement(Buffer.from('Сумма', 'utf-8')), 'Сумма');
+});
+
+test('normalizeStatementRows: колонки в произвольном порядке с одной колонкой "Сумма"', () => {
+  const rows = [
+    ['Номер документа', 'Дата документа', 'Назначение платежа', 'Сумма'],
+    ['12', '10.07.2026', 'Оплата по счету 104', '10000.00'],
+    ['13', '11.07.2026', 'Счет № 1', '5000,50'],
+  ];
+  assert.deepStrictEqual(normalizeStatementRows(rows), [
+    ['2026-07-10', '10000.00', 'Оплата по счету 104'],
+    ['2026-07-11', '5000,50', 'Счет № 1'],
+  ]);
+});
+
+test('normalizeStatementRows: раздельные Дебет/Кредит — берём только поступления', () => {
+  const rows = [
+    ['Дата операции', 'Дебет', 'Кредит', 'Назначение платежа'],
+    ['10.07.2026', '', '10000.00', 'Оплата по счету 104'],
+    ['11.07.2026', '3000.00', '', 'Комиссия банка'], // списание — не платёж от контрагента
+    ['12.07.2026', '', '5000.00', 'Счет № 1'],
+  ];
+  assert.deepStrictEqual(normalizeStatementRows(rows), [
+    ['2026-07-10', '10000.00', 'Оплата по счету 104'],
+    ['2026-07-12', '5000.00', 'Счет № 1'],
+  ]);
+});
+
+test('normalizeStatementRows: заголовок не распознан — строки возвращаются как есть (легаси-формат)', () => {
+  const rows = [['2026-07-10', '10000.00', 'Оплата по счету 104']];
+  assert.deepStrictEqual(normalizeStatementRows(rows), rows);
+});
+
+test('normalizeStatementRows: дата как объект Date (ячейка Excel)', () => {
+  const rows = [
+    ['Дата операции', 'Сумма', 'Назначение платежа'],
+    [new Date('2026-07-10T00:00:00Z'), 10000, 'Оплата по счету 104'],
+  ];
+  assert.deepStrictEqual(normalizeStatementRows(rows), [
+    ['2026-07-10', '10000', 'Оплата по счету 104'],
+  ]);
 });

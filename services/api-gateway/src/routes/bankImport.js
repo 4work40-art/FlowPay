@@ -1,33 +1,76 @@
 const express = require('express');
 const multer  = require('multer');
+const path    = require('path');
 const { createHash } = require('crypto');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
+const { readSheetRows } = require('../lib/spreadsheetReader');
 
 const {
   parseCsv, is1CFormat, parse1C, decodeStatement,
-  parseAmountToKopecks, purposeContainsNumber,
+  parseAmountToKopecks, purposeContainsNumber, normalizeStatementRows,
 } = require('../lib/statementParse');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const STATEMENT_ALLOWED_MIME = new Set([
+  'text/csv', 'application/csv', 'text/plain',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls
+]);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extOk = ['.csv', '.txt', '.xlsx', '.xls'].includes(ext);
+    if (!STATEMENT_ALLOWED_MIME.has(file.mimetype) && !extOk)
+      return cb(new Error('UNSUPPORTED_TYPE'));
+    cb(null, true);
+  },
+});
 
-router.post('/bank-import', authMiddleware, upload.single('file'), async (req, res) => {
-  if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+router.post('/bank-import', authMiddleware, (req, res) => {
+  upload.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.message === 'UNSUPPORTED_TYPE'
+        ? 'Разрешены только CSV, TXT (1С-обмен) и Excel (.xlsx, .xls)'
+        : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 10 МБ' : 'Не удалось прочитать файл';
+      return err(res, 400, message, 'VALIDATION_ERROR');
+    }
+    if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+
+  const ext = path.extname(req.file.originalname || '').toLowerCase();
+  const isExcel = ext === '.xlsx' || ext === '.xls' ||
+    req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    req.file.mimetype === 'application/vnd.ms-excel';
 
   let rows;
   try {
-    const text = decodeStatement(req.file.buffer);
-    rows = is1CFormat(text) ? parse1C(text) : parseCsv(text);
+    if (isExcel) {
+      // Выписки Excel — у каждого банка своя раскладка колонок (Сбербизнес,
+      // Тинькофф, Альфа, ВТБ, Точка, Модульбанк и др.) — приводим к общему
+      // виду по смыслу заголовков, а не по фиксированным индексам.
+      const { rows: sheetRows } = await readSheetRows(req.file.buffer);
+      rows = normalizeStatementRows(sheetRows);
+    } else {
+      const text = decodeStatement(req.file.buffer);
+      if (is1CFormat(text)) {
+        // 1CClientBankExchange — единый стандарт выгрузки для всех банков
+        // РФ (не зависит от конкретного банка), формат уже канонический.
+        rows = parse1C(text);
+      } else {
+        rows = normalizeStatementRows(parseCsv(text));
+      }
+    }
   } catch (e) {
-    return err(res, 400, 'Не удалось прочитать файл — ожидается CSV или 1CClientBankExchange', 'VALIDATION_ERROR');
+    return err(res, 400, 'Не удалось прочитать файл — ожидается CSV, Excel-выписка или 1CClientBankExchange', 'VALIDATION_ERROR');
   }
   if (!rows.length) return err(res, 400, 'Файл пуст или не содержит документов', 'VALIDATION_ERROR');
 
-  // Первая строка CSV может быть заголовком — пропускаем, если первая "сумма"
-  // не парсится как число.
+  // Заголовок без опознаваемых нами колонок (узкий легаси-CSV без шапки) —
+  // старая эвристика: пропускаем первую строку, если у неё "сумма" не число.
   if (rows.length > 1 && parseAmountToKopecks(rows[0][1] || '') === null) rows = rows.slice(1);
 
   const orgId = req.user.org_id;
@@ -153,6 +196,7 @@ router.post('/bank-import', authMiddleware, upload.single('file'), async (req, r
   return ok(res, {
     matched_count: matched.length, unmatched_count: unmatched.length,
     skipped_count: skipped.length, matched, unmatched, skipped,
+  });
   });
 });
 
