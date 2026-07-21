@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
+import ReminderPopup from './ReminderPopup';
 
 const NAV = [
   { href: '/dashboard',      icon: '📊', label: 'Дашборд'      },
@@ -99,6 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="main-content">
+        <ReminderPopup />
         {children}
       </main>
     </div>

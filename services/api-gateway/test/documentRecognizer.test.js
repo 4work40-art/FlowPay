@@ -221,4 +221,26 @@ test('recognize: Excel-счёт с товарной таблицей и метк
   assert.strictEqual(result.fields.inn, '7724239974');
   assert.strictEqual(result.fields.kpp, '772401001');
   assert.strictEqual(result.fields.bank_bik, '044525593');
+  assert.deepStrictEqual(result.fields.items, [
+    { name: 'Дверной упор', quantity: 480, unit: null, unit_price_kopecks: 8700, amount_kopecks: 4176000 },
+    { name: 'Ограничитель', quantity: 30, unit: null, unit_price_kopecks: 20000, amount_kopecks: 600000 },
+  ]);
+});
+
+test('findItems: читает таблицу товаров из текста pdftotext -layout (счёт-PDF)', () => {
+  const { findItems } = require('../src/lib/documentRecognizer');
+  const text = [
+    'СЧЕТ № 12 от 01.06.2026',
+    'Поставщик: ООО "Ромашка"',
+    '',
+    'Наименование            Кол-во  Ед.изм.  Цена       Сумма',
+    'Бумага А4                  10  шт       250,00     2 500,00',
+    'Картриджи для принтера      2  шт       3 000,00   6 000,00',
+    'Итого к оплате:                                    8 500,00',
+  ].join('\n');
+  const items = findItems(text, null);
+  assert.deepStrictEqual(items, [
+    { name: 'Бумага А4', quantity: 10, unit: 'шт', unit_price_kopecks: 25000, amount_kopecks: 250000 },
+    { name: 'Картриджи для принтера', quantity: 2, unit: 'шт', unit_price_kopecks: 300000, amount_kopecks: 600000 },
+  ]);
 });

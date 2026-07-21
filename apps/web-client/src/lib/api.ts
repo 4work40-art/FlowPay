@@ -99,6 +99,10 @@ export const api = {
   dashboard: {
     summary: (org_id?: string) =>
       req(`/dashboard${org_id ? `?org_id=${org_id}` : ''}`),
+    // Напоминания об оплате для всплывающего окна в личном кабинете — счета,
+    // до срока которых осталось не больше настроенного числа дней, плюс уже
+    // просроченные. Email/мессенджеры пока не подключены — это задел на будущее.
+    reminders: () => req('/dashboard/reminders'),
   },
 
   invoices: {
@@ -123,6 +127,8 @@ export const api = {
       req(`/invoices/${invoiceId}/items`, { method:'POST', body:JSON.stringify(item) }),
     deleteItem: (invoiceId: string, itemId: string) =>
       req(`/invoices/${invoiceId}/items/${itemId}`, { method:'DELETE' }),
+    fillMissing: (id: string, body: { invoice_date?: string; due_date?: string; notes?: string; items?: InvoiceItemInput[] }) =>
+      req(`/invoices/${id}/fill-missing`, { method:'PATCH', body:JSON.stringify(body) }),
     // Массовое создание счетов из проверенного пользователем реестра.
     bulkCreate: (items: BulkInvoiceItem[]): Promise<{
       success: true;
