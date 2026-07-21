@@ -80,6 +80,7 @@ export const api = {
       number?: string;
       counterparty_id?: string;
       due_date?: string;
+      invoice_date?: string;
       notes?: string;
     }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
     transition: (id: string, transition: string, reason?: string) =>
@@ -89,6 +90,21 @@ export const api = {
   },
 
   documents: {
+    // Распознавание счёта/платёжки из файла (PDF/JPG/PNG) — возвращает
+    // черновик полей для проверки, ничего не сохраняет само по себе.
+    recognize: async (file: File) => {
+      const token = getStoredToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(apiUrl('/documents/recognize'), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
     list: (invoiceId: string) => req(`/invoices/${invoiceId}/documents`),
     upload: async (invoiceId: string, file: File) => {
       const token = getStoredToken();

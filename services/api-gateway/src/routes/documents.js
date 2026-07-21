@@ -8,8 +8,69 @@ const { ok, err, dbErr } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { UPLOAD_DIR } = require('../lib/storage');
+const { recognize } = require('../lib/documentRecognizer');
+const { purposeContainsNumber } = require('../lib/statementParse');
+const { rateLimit } = require('../lib/rateLimit');
 
 const router = express.Router();
+
+const recognizeLimiter = rateLimit({
+  keyFn: (req) => `recognize:${req.user?.org_id}`,
+  max: 30, windowSeconds: 60 * 60,
+  message: 'Слишком много запросов на распознавание документов, попробуйте позже',
+});
+const recognizeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype))
+      return cb(new Error('UNSUPPORTED_TYPE'));
+    cb(null, true);
+  },
+});
+
+// Распознавание счёта на оплату / платёжного поручения из файла (PDF с
+// текстовым слоем — напрямую, скан/фото — через OCR). Результат — черновик
+// для проверки на форме создания счёта/платежа, ничего не сохраняется здесь.
+router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res) => {
+  recognizeUpload.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.message === 'UNSUPPORTED_TYPE'
+        ? 'Разрешены только PDF, JPG и PNG'
+        : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 15 МБ' : 'Не удалось прочитать файл';
+      return err(res, 400, message, 'VALIDATION_ERROR');
+    }
+    if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+
+    try {
+      const result = await recognize(req.file.buffer, req.file.originalname, req.file.mimetype);
+
+      // Для платёжки/неизвестного документа сразу подбираем счёт-кандидат
+      // по номеру, упомянутому в назначении платежа — той же логикой точного
+      // совпадения токена, что и импорт банковской выписки.
+      let matchedInvoices = [];
+      const refNumber = result.fields.referenced_invoice_number;
+      if (refNumber) {
+        const { rows } = await pool.query(
+          `SELECT id, number, amount_kopecks, paid_kopecks, status, counterparty_id
+           FROM invoices WHERE org_id = $1 AND status NOT IN ('DISPUTED','ARCHIVED','WRITTEN_OFF')`,
+          [req.user.org_id]
+        );
+        matchedInvoices = rows
+          .filter(inv => inv.number && purposeContainsNumber(refNumber, inv.number))
+          .map(inv => ({ id: inv.id, number: inv.number, remaining_kopecks: Number(inv.amount_kopecks) - Number(inv.paid_kopecks) }));
+      }
+
+      await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
+        null, { doc_type: result.doc_type, filename: req.file.originalname });
+
+      return ok(res, { ...result, matched_invoices: matchedInvoices });
+    } catch (e) {
+      console.error('[document recognize]', e.message);
+      return err(res, 502, 'Не удалось распознать документ — попробуйте другой файл или введите данные вручную', 'RECOGNIZE_FAILED');
+    }
+  });
+});
 
 const ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAX_SIZE_BYTES = 15 * 1024 * 1024; // 15 МБ

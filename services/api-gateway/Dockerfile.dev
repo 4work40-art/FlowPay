@@ -1,5 +1,8 @@
 FROM node:20-alpine
 WORKDIR /app
+# poppler-utils (pdftotext/pdftoppm) + tesseract-ocr (rus+eng) — распознавание
+# счетов на оплату и платёжных поручений из загруженных файлов.
+RUN apk add --no-cache poppler-utils tesseract-ocr tesseract-ocr-data-rus
 COPY package.json ./
 RUN npm install
 COPY src/ ./src/

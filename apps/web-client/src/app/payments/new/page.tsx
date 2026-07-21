@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, fmt } from '@/lib/api';
+import DocumentDropzone, { Recognized } from '@/components/DocumentDropzone';
 
 const METHODS = [
   { v: 'bank_transfer', l: 'Банковский перевод' },
@@ -10,20 +11,29 @@ const METHODS = [
   { v: 'online',        l: 'Онлайн-оплата'       },
 ];
 
+type InvoiceOption = { id: string; number: string | null; counterparty_name: string | null; remaining_display: string };
+
 export default function NewPaymentPage() {
   const router = useRouter();
-  const invoiceId = useSearchParams().get('invoice') ?? '';
+  const params = useSearchParams();
+  const invoiceId = params.get('invoice') ?? '';
 
   const [invoice, setInvoice] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const [amount,  setAmount]  = useState('');
+  const [amount,  setAmount]  = useState(params.get('amount') ?? '');
   const [method,  setMethod]  = useState('bank_transfer');
-  const [ref,     setRef]     = useState('');
-  const [date,    setDate]    = useState(() => new Date().toISOString().slice(0, 10));
+  const [ref,     setRef]     = useState(params.get('ref') ?? '');
+  const [date,    setDate]    = useState(() => params.get('date') || new Date().toISOString().slice(0, 10));
   const [error,   setError]   = useState('');
   const [saving,  setSaving]  = useState(false);
+  const [recognizedNotice, setRecognizedNotice] = useState('');
+
+  // Пока счёт не выбран: кандидаты по распознанной платёжке или ручной поиск.
+  const [candidates, setCandidates] = useState<{ id: string; number: string }[]>([]);
+  const [allInvoices, setAllInvoices] = useState<InvoiceOption[]>([]);
+  const [manualPick, setManualPick] = useState(false);
 
   useEffect(() => {
     if (!invoiceId) { setLoading(false); return; }
@@ -33,12 +43,103 @@ export default function NewPaymentPage() {
       .finally(() => setLoading(false));
   }, [invoiceId]);
 
+  const goToInvoice = (id: string, prefill: { amount?: number; date?: string; ref?: string }) => {
+    const qp = new URLSearchParams({ invoice: id });
+    if (prefill.amount) qp.set('amount', String(prefill.amount / 100));
+    if (prefill.date) qp.set('date', prefill.date);
+    if (prefill.ref) qp.set('ref', prefill.ref);
+    router.replace(`/payments/new?${qp.toString()}`);
+  };
+
+  const handleRecognizedNoInvoice = async (r: Recognized) => {
+    if (r.doc_type === 'payment_order') {
+      const matched = r.matched_invoices ?? [];
+      if (matched.length === 1) {
+        goToInvoice(matched[0].id, { amount: r.fields.amount_kopecks ?? undefined, date: r.fields.payment_date ?? undefined, ref: r.fields.number ?? undefined });
+        return;
+      }
+      if (matched.length > 1) {
+        setCandidates(matched);
+        setRecognizedNotice('Назначение платежа подходит сразу к нескольким счетам — выберите нужный.');
+        setAmount(r.fields.amount_kopecks ? String(r.fields.amount_kopecks / 100) : amount);
+        if (r.fields.payment_date) setDate(r.fields.payment_date);
+        if (r.fields.number) setRef(r.fields.number);
+        return;
+      }
+    }
+    // Счёт не нашли автоматически — сохраняем распознанные поля и просим выбрать счёт вручную.
+    setRecognizedNotice('Не удалось автоматически найти счёт по этому файлу — выберите его из списка ниже, остальные поля уже заполнены.');
+    if (r.fields.amount_kopecks) setAmount(String(r.fields.amount_kopecks / 100));
+    const payDate = 'payment_date' in r.fields ? r.fields.payment_date : ('invoice_date' in r.fields ? r.fields.invoice_date : null);
+    if (payDate) setDate(payDate);
+    if ('number' in r.fields && r.fields.number) setRef(r.fields.number);
+    setManualPick(true);
+    if (!allInvoices.length) {
+      api.invoices.list({ limit: '100' }).then(res => setAllInvoices(res.data?.items ?? [])).catch(() => {});
+    }
+  };
+
+  const handleRecognizedWithInvoice = (r: Recognized) => {
+    setRecognizedNotice('Данные распознаны из файла — проверьте перед сохранением, OCR может ошибаться.');
+    if (r.fields.amount_kopecks) setAmount(String(r.fields.amount_kopecks / 100));
+    const payDate = 'payment_date' in r.fields ? r.fields.payment_date : null;
+    if (payDate) setDate(payDate);
+    if ('number' in r.fields && r.fields.number) setRef(r.fields.number);
+  };
+
   if (!invoiceId) {
     return (
-      <div className="card" style={{ maxWidth: 480 }}>
-        <div className="card-body">
-          <p>Сначала выберите счёт, по которому вносите платёж.</p>
-          <a href="/invoices" className="btn btn-primary" style={{ marginTop: 12 }}>К списку счетов</a>
+      <div>
+        <div className="page-header">
+          <div className="page-title">Новый платёж</div>
+          <a href="/invoices" className="btn btn-sm">← К списку</a>
+        </div>
+
+        <div style={{ maxWidth: 480 }}>
+          <DocumentDropzone onRecognized={handleRecognizedNoInvoice} />
+        </div>
+
+        {recognizedNotice && (
+          <div className="error-box" style={{ maxWidth: 480, marginBottom: 16, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+            {recognizedNotice}
+          </div>
+        )}
+
+        {candidates.length > 0 && (
+          <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
+            <div className="card-header">Похожие счета — выберите нужный</div>
+            <div className="card-body">
+              {candidates.map(c => (
+                <button key={c.id} type="button" className="btn btn-sm" style={{ marginRight: 8, marginBottom: 8 }}
+                  onClick={() => goToInvoice(c.id, { amount: Number(amount.replace(',', '.')) * 100 || undefined, date, ref })}>
+                  Счёт №{c.number}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {manualPick && (
+          <div className="card" style={{ maxWidth: 480, marginBottom: 16 }}>
+            <div className="card-header">Выберите счёт</div>
+            <div className="card-body">
+              <select onChange={e => { if (e.target.value) goToInvoice(e.target.value, { amount: Number(amount.replace(',', '.')) * 100 || undefined, date, ref }); }} defaultValue="">
+                <option value="">— выберите счёт —</option>
+                {allInvoices.map(i => (
+                  <option key={i.id} value={i.id}>
+                    №{i.number ?? '—'} · {i.counterparty_name ?? 'без контрагента'} · остаток {i.remaining_display}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        <div className="card" style={{ maxWidth: 480 }}>
+          <div className="card-body">
+            <p>Или выберите счёт вручную из списка счетов.</p>
+            <a href="/invoices" className="btn btn-primary" style={{ marginTop: 12 }}>К списку счетов</a>
+          </div>
         </div>
       </div>
     );
@@ -88,9 +189,18 @@ export default function NewPaymentPage() {
         </div>
       </div>
 
+      <div style={{ maxWidth: 480 }}>
+        <DocumentDropzone onRecognized={handleRecognizedWithInvoice} />
+      </div>
+
       <div className="card" style={{ maxWidth: 480 }}>
         <div className="card-body">
           <form onSubmit={submit}>
+            {recognizedNotice && (
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+                {recognizedNotice}
+              </div>
+            )}
             {error && <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>}
 
             <div className="form-group">
