@@ -45,6 +45,8 @@ CREATE TABLE counterparties (
   phone VARCHAR(20), email VARCHAR(255), address TEXT,
   type VARCHAR(50) DEFAULT 'vendor',
   trust_score INTEGER DEFAULT 50,
+  ogrn VARCHAR(15),
+  bank_account VARCHAR(20), bank_name VARCHAR(255), bank_bik VARCHAR(9), bank_corr_account VARCHAR(20),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

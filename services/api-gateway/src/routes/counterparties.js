@@ -4,7 +4,25 @@ const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
+const { isValidOgrn, isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
 const dadata = require('../lib/dadata');
+
+// Банковские реквизиты и ОГРН — та же схема валидации формата, что и у
+// ИНН/КПП в этом файле (см. validateRequisites): явно неверный формат
+// отклоняется на создании/обновлении карточки контрагента. Автосоздание
+// контрагента из распознанного документа (invoices/new) уже ловит эту
+// ошибку и откатывается на ручной выбор, не теряя остальные данные счёта.
+function validateBankFields({ ogrn, bank_bik, bank_account, bank_corr_account }) {
+  if (ogrn && !isValidOgrn(String(ogrn).trim()))
+    return 'ОГРН не прошёл проверку контрольной суммы — проверьте вручную';
+  if (bank_bik && !isValidBik(String(bank_bik).trim()))
+    return 'БИК некорректен: ожидается 9 цифр, начинается с 04';
+  if (bank_account && !isValidAccountNumber(String(bank_account).trim()))
+    return 'Номер расчётного счёта некорректен: ожидается 20 цифр';
+  if (bank_corr_account && !isValidAccountNumber(String(bank_corr_account).trim()))
+    return 'Номер корреспондентского счёта некорректен: ожидается 20 цифр';
+  return null;
+}
 
 const router = express.Router();
 

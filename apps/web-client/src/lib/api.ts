@@ -164,8 +164,10 @@ export const api = {
   counterparties: {
     list: () => req('/counterparties'),
     suggest: (inn: string) => req(`/counterparties/suggest?inn=${encodeURIComponent(inn)}`),
-    create: (body: { name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string }) =>
-      req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
+    create: (body: {
+      name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string;
+      ogrn?: string; bank_account?: string; bank_name?: string; bank_bik?: string; bank_corr_account?: string;
+    }) => req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
   },
