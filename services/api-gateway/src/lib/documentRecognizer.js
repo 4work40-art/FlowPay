@@ -11,6 +11,8 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
+const { readSheetRows } = require('./spreadsheetReader');
+const { splitCsvToRows } = require('./registerParse');
 
 const execFileP = promisify(execFile);
 const MAX_OCR_PAGES = 5; // сканы длиннее — распознаём только начало, этого достаточно для шапки документа
@@ -85,6 +87,20 @@ async function extractImageText(buffer, ext) {
   });
 }
 
+// Строки-массивы ячеек в единую строку текста, по одной строке файла на
+// строку текста — тот же вид, что даёт pdftotext -layout, чтобы все
+// регулярки ниже (номер, дата, ИНН, банковские реквизиты и т.д.) работали
+// одинаково независимо от происхождения текста.
+function flattenRowsToText(rows) {
+  return rows
+    .map(cells => (cells || [])
+      .map(c => (c === null || c === undefined ? '' : (c instanceof Date ? c.toISOString().slice(0, 10) : String(c))))
+      .filter(Boolean)
+      .join(' '))
+    .filter(Boolean)
+    .join('\n');
+}
+
 async function extractText(buffer, filename, mimetype) {
   const ext = (path.extname(filename || '').slice(1) || '').toLowerCase();
   const isPdf = mimetype === 'application/pdf' || ext === 'pdf';
@@ -93,7 +109,19 @@ async function extractText(buffer, filename, mimetype) {
   const isImage = /^image\//.test(mimetype || '') || ['png', 'jpg', 'jpeg'].includes(ext);
   if (isImage) return extractImageText(buffer, ext === 'jpeg' ? 'jpg' : (ext || 'png'));
 
-  throw new Error('Поддерживаются только PDF, PNG и JPG');
+  throw new Error('Поддерживаются только PDF, PNG, JPG, XLSX, XLS и CSV');
+}
+
+// Счёт/платёжка, присланные как Excel/CSV, а не PDF/скан — реальный и
+// частый случай (многие учётные системы печатают счёт в файл электронной
+// таблицы вместо PDF). В отличие от lib/registerParse.js это НЕ таблица из
+// многих строк-счетов, а один документ: реквизиты и таблица товаров внутри
+// него не нужно путать со строками реестра. Возвращаем и текст (для тех же
+// регулярок, что и у PDF/OCR), и исходные строки-ячейки (для более точного
+// поиска итоговой суммы — см. findStructuredAmount).
+async function extractSpreadsheetDocument(buffer, ext) {
+  const rows = ext === 'csv' ? splitCsvToRows(buffer.toString('utf-8')) : (await readSheetRows(buffer)).rows;
+  return { text: flattenRowsToText(rows), rows };
 }
 
 // Взвешенная классификация вместо цепочки if/else: считаем очки по
@@ -105,6 +133,9 @@ function classifyDocument(text) {
   const score = { invoice: 0, invoice_for_vat: 0, payment_order: 0 };
 
   if (/сч[её]т[а-яёa-z]*\s+на\s+оплату/i.test(t)) score.invoice += 3;
+  // "СЧЕТ № 126 от ..." без слов "на оплату" — тоже частый вариант шапки
+  // (особенно у документов, экспортированных в Excel/из 1С).
+  if (/(^|\n)\s*сч[её]т\s*(№|n|no\.?)/i.test(t)) score.invoice += 2;
   if (/поставщик|исполнитель\s*[:\-]/i.test(t)) score.invoice += 1;
   if (/итого\s*к\s*оплате/i.test(t)) score.invoice += 1;
 
@@ -229,6 +260,23 @@ function findSupplierName(text) {
   return m ? m[1].trim().replace(/\s{2,}/g, ' ') : null;
 }
 
+// Не все шаблоны счёта подписывают поставщика словом "Поставщик:" — многие
+// (в том числе часто встречающиеся у 1С-подобных сервисов) используют слово
+// "Получатель" отдельной строкой от названия организации (метка и значение
+// в разных строках/ячейках, обычную регулярку по одной строке это ломает),
+// либо вообще не подписывают, а просто печатают название компании в шапке
+// документа первой строкой — стандартное деловое оформление в РФ. Берём
+// первую строку среди первых нескольких, которая выглядит как название
+// организации (ООО/ИП/АО и т.п.), если по явной метке ничего не нашли.
+// \b не матчит границу после кириллицы (тот же класс проблемы, что и с \w
+// в остальном файле) — вместо него отрицательный lookahead на кириллицу/латиницу.
+const ORG_NAME_RE = new RegExp(`^(?:ООО|ОАО|ЗАО|ПАО|АО|ИП)(?!${CYR})|^Общество\\s+с\\s+ограниченной\\s+ответственностью|^Индивидуальный\\s+предприниматель`, 'i');
+function findSupplierNameFallback(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(0, 8);
+  const line = lines.find(l => ORG_NAME_RE.test(l));
+  return line || null;
+}
+
 function findBuyerName(text) {
   const m = text.match(/(?:покупатель|заказчик)\s*[:\-]?\s*([^\n\r]{3,120})/i);
   return m ? m[1].trim().replace(/\s{2,}/g, ' ') : null;
@@ -292,6 +340,33 @@ function partyFromZone(zoneText) {
   return { inn: inns[0] || null, kpp: kpps[0] || null, ...(bank || {}) };
 }
 
+// Сумма из ячеек таблицы (только для Excel/CSV) — там, где число хранится
+// как есть, без форматирования "150 000,00", регулярка по тексту (которая
+// требует десятичных знаков) ничего не находит. Ищем строку, где есть
+// ячейка-метка вроде "Итого"/"Итого к оплате", и берём наибольшее число
+// среди остальных ячеек той же строки — это надёжнее регулярки по тексту
+// именно потому, что ячейки уже разложены по структуре, а не слиты в одну
+// строку.
+function findStructuredAmount(rows, labelRe, allowZero = false) {
+  if (!rows) return null;
+  const min = allowZero ? 0 : Number.MIN_VALUE; // >0 для итоговых сумм; НДС бывает ровно 0 ("не облагается")
+  for (const cells of rows) {
+    if (!cells) continue;
+    const hasLabel = cells.some(c => typeof c === 'string' && labelRe.test(c.trim()));
+    if (!hasLabel) continue;
+    const numbers = cells
+      .filter(c => typeof c === 'number' && Number.isFinite(c) && c >= min)
+      .concat(
+        cells
+          .filter(c => typeof c === 'string')
+          .map(c => Number(c.trim().replace(/\s/g, '').replace(',', '.')))
+          .filter(n => Number.isFinite(n) && n >= min)
+      );
+    if (numbers.length) return Math.round(Math.max(...numbers) * 100);
+  }
+  return null;
+}
+
 // Доля найденных ожидаемых полей — показывается пользователю как ориентир,
 // каким результатам можно доверять больше, а какие точно нужно перепроверить.
 function confidenceFor(docType, fields) {
@@ -307,7 +382,18 @@ function confidenceFor(docType, fields) {
 }
 
 async function recognize(buffer, filename, mimetype) {
-  const text = await extractText(buffer, filename, mimetype);
+  const ext = path.extname(filename || '').slice(1).toLowerCase();
+  const isSpreadsheet = ['xlsx', 'xls', 'csv'].includes(ext) ||
+    ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv', 'application/csv'].includes(mimetype);
+
+  let text, rows;
+  if (isSpreadsheet) {
+    ({ text, rows } = await extractSpreadsheetDocument(buffer, ext === 'csv' ? 'csv' : (ext || 'xlsx')));
+  } else {
+    text = await extractText(buffer, filename, mimetype);
+    rows = null;
+  }
+
   const docType = classifyDocument(text);
   const inns = findInns(text);
 
@@ -315,8 +401,8 @@ async function recognize(buffer, filename, mimetype) {
     const fields = {
       number: findNumber(text, 'invoice'),
       invoice_date: findDate(text),
-      amount_kopecks: findAmountKopecks(text, 'invoice'),
-      supplier_name: findSupplierName(text),
+      amount_kopecks: findAmountKopecks(text, 'invoice') ?? findStructuredAmount(rows, /^итого\s*к\s*оплате|^итого\s*:?$/i),
+      supplier_name: findSupplierName(text) || findSupplierNameFallback(text),
       inn: inns[0] || null,
       kpp: findKpp(text),
       ogrn: findOgrns(text)[0] || null,
@@ -331,14 +417,14 @@ async function recognize(buffer, filename, mimetype) {
     const fields = {
       number: findNumber(text, 'invoice_for_vat'),
       invoice_date: findDate(text),
-      amount_kopecks: findAmountKopecks(text, 'invoice_for_vat'),
-      seller_name: findSupplierName(text),
+      amount_kopecks: findAmountKopecks(text, 'invoice_for_vat') ?? findStructuredAmount(rows, /^всего\s*к\s*оплате|^итого\s*:?$/i),
+      seller_name: findSupplierName(text) || findSupplierNameFallback(text),
       buyer_name: findBuyerName(text),
       seller_inn: inns[0] || null,
       buyer_inn: inns[1] || null,
       kpps: findKpps(text),
       vat_rate: vat?.vat_rate ?? null,
-      vat_kopecks: vat?.vat_kopecks ?? null,
+      vat_kopecks: vat?.vat_kopecks ?? findStructuredAmount(rows, /в\s*том\s*числе\s*ндс|^сумма\s*ндс/i, true),
     };
     return { doc_type: 'invoice_for_vat', fields, confidence: confidenceFor('invoice_for_vat', fields), text_excerpt: text.trim().slice(0, 1500) };
   }
@@ -349,7 +435,7 @@ async function recognize(buffer, filename, mimetype) {
     const fields = {
       number: findNumber(text, 'payment_order'),
       payment_date: findDate(text),
-      amount_kopecks: findAmountKopecks(text, 'payment_order'),
+      amount_kopecks: findAmountKopecks(text, 'payment_order') ?? findStructuredAmount(rows, /^сумма\s*:?$/i),
       purpose,
       referenced_invoice_number: findReferencedInvoiceNumber(purpose),
       inns,
@@ -380,7 +466,7 @@ module.exports = {
   // Экспортированы отдельно для юнит-тестов на готовом тексте — без
   // обращения к pdftotext/tesseract, которых может не быть в CI.
   findDate, findNumber, findAmountKopecks, findVat, findInns, findKpp, findKpps,
-  findOgrns, findBankRequisites, findSupplierName, findBuyerName, findAddress,
+  findOgrns, findBankRequisites, findSupplierName, findSupplierNameFallback, findBuyerName, findAddress,
   findPurpose, findReferencedInvoiceNumber, findPriority, findUin, findKbk,
-  findOktmo, splitPayerPayee, confidenceFor,
+  findOktmo, splitPayerPayee, confidenceFor, flattenRowsToText, findStructuredAmount,
 };

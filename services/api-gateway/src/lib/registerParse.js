@@ -3,8 +3,8 @@
 // (test/registerParse.test.js). По аналогии с lib/statementParse.js:
 // парсер только читает и валидирует, ничего не сохраняет.
 
-const ExcelJS = require('exceljs');
 const { isValidInn } = require('./inn');
+const { readSheetRows } = require('./spreadsheetReader');
 
 const MAX_ROWS = 500;
 const HEADER_SEARCH_ROWS = 5; // шапка таблицы не всегда в первой строке —
@@ -95,14 +95,6 @@ function normalizeDate(raw) {
   return str; // не распознали формат — отдаём как есть, пусть решает пользователь
 }
 
-function cellToText(v) {
-  if (v === null || v === undefined) return '';
-  if (v instanceof Date) return v;
-  if (typeof v === 'object' && v.text !== undefined) return v.text; // rich text
-  if (typeof v === 'object' && v.result !== undefined) return v.result; // formula
-  return v;
-}
-
 function buildItem(rowIndex, colMap, cells) {
   const get = (field) => (colMap[field] !== undefined ? cells[colMap[field]] : undefined);
 
@@ -162,14 +154,15 @@ function rowsToItems(rows, rowNumberOf) {
   return items;
 }
 
-function parseCsvRegister(buffer) {
-  const text = buffer.toString('utf-8');
+// Простой сплит CSV-текста в массив строк-ячеек с поддержкой кавычек и
+// разделителя ; или , — переиспользуется и одиночным распознаванием
+// документа (lib/documentRecognizer.js), когда CSV содержит не реестр,
+// а один документ (пусть это и редкий случай для CSV).
+function splitCsvToRows(text) {
   const lines = text.split(/\r?\n/).map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '');
-  if (!lines.length) throw new Error('Файл пуст');
-
+  if (!lines.length) return [];
   const delimiter = lines[0].includes(';') ? ';' : ',';
   const splitLine = (line) => {
-    // Простой сплит с поддержкой кавычек вокруг ячеек.
     const cells = [];
     let cur = '';
     let inQuotes = false;
@@ -182,8 +175,13 @@ function parseCsvRegister(buffer) {
     cells.push(cur);
     return cells.map(c => c.trim());
   };
+  return lines.map(splitLine);
+}
 
-  const rows = lines.map(splitLine);
+function parseCsvRegister(buffer) {
+  const rows = splitCsvToRows(buffer.toString('utf-8'));
+  if (!rows.length) throw new Error('Файл пуст');
+
   if (rows.length - 1 > MAX_ROWS) {
     throw new Error(`Реестр слишком велик: максимум ${MAX_ROWS} строк данных (без заголовка)`);
   }
@@ -191,58 +189,8 @@ function parseCsvRegister(buffer) {
   return rowsToItems(rows, (idx) => idx + 1); // нумерация строк файла с 1
 }
 
-// Строки листа как массив массивов ячеек через ExcelJS — понимает только
-// современный формат (OOXML .xlsx), но делает это лучше всего для него
-// (даты, формулы, rich text).
-async function readRowsWithExcelJs(buffer) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) throw new Error('В файле нет листов с данными');
-
-  const rows = [];
-  const rowNumbers = [];
-  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    const cells = [];
-    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      cells[colNumber - 1] = cellToText(cell.value);
-    });
-    rows.push(cells);
-    rowNumbers.push(rowNumber);
-  });
-  return { rows, rowNumbers };
-}
-
-// Фолбэк на устаревший бинарный формат (Excel 97-2003, OLE2/BIFF) — такие
-// файлы по-прежнему реально приходят из 1С и старых версий бухгалтерских
-// программ несмотря на расширение .xls, и ExcelJS их не читает вообще
-// (понимает только OOXML/.xlsx). SheetJS — единственная поддерживаемая
-// npm-библиотека, читающая оба формата; используется только как fallback
-// именно для этого случая, а не как основной путь разбора.
-function readRowsWithSheetJs(buffer) {
-  const XLSX = require('xlsx');
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error('В файле нет листов с данными');
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
-  return { rows, rowNumbers: rows.map((_, i) => i + 1) };
-}
-
 async function parseExcelRegister(buffer) {
-  let rows, rowNumbers;
-  try {
-    ({ rows, rowNumbers } = await readRowsWithExcelJs(buffer));
-  } catch (excelJsError) {
-    try {
-      ({ rows, rowNumbers } = readRowsWithSheetJs(buffer));
-    } catch (sheetJsError) {
-      throw new Error(
-        'Не удалось прочитать файл ни как современный (.xlsx), ни как старый (.xls) формат Excel — ' +
-        'проверьте, что файл не повреждён, либо сохраните его как .xlsx или .csv и загрузите снова.'
-      );
-    }
-  }
+  const { rows, rowNumbers } = await readSheetRows(buffer);
 
   if (rowNumbers.length - 1 > MAX_ROWS) {
     throw new Error(`Реестр слишком велик: максимум ${MAX_ROWS} строк данных (без заголовка)`);
@@ -259,4 +207,5 @@ module.exports = {
   normalizeDate,
   detectColumns,
   pickHeaderRow,
+  splitCsvToRows,
 };
