@@ -5,6 +5,44 @@ const { authMiddleware } = require('../lib/auth');
 
 const router = express.Router();
 
+// Напоминания об оплате внутри личного кабинета — всплывающее сообщение
+// вместо почты/мессенджеров (те не подключены; сама схема "дни до срока"
+// уже готова для них на будущее, см. dueSoonDigestJob). Отдаём и счета,
+// у которых срок наступает через reminder_days_before дней, и уже
+// просроченные — оба случая требуют внимания пользователя прямо сейчас.
+router.get('/reminders', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
+  try {
+    const orgRows = await pool.query('SELECT reminder_days_before FROM organizations WHERE id=$1', [orgId]);
+    const reminderDays = orgRows.rows[0]?.reminder_days_before ?? 3;
+
+    const { rows } = await pool.query(`
+      SELECT i.id, i.number, i.due_date, i.status,
+        (i.amount_kopecks - i.paid_kopecks) AS remaining_kopecks,
+        c.name AS counterparty_name
+      FROM invoices i
+      LEFT JOIN counterparties c ON i.counterparty_id = c.id
+      WHERE i.org_id = $1
+        AND i.status IN ('UNDER_CONTROL','PAYMENT_PENDING','PARTIALLY_PAID','OVERDUE')
+        AND i.due_date IS NOT NULL
+        AND i.due_date <= CURRENT_DATE + ($2 || ' days')::interval
+      ORDER BY i.due_date ASC
+      LIMIT 50
+    `, [orgId, reminderDays]);
+
+    return ok(res, {
+      reminder_days_before: reminderDays,
+      items: rows.map(r => ({
+        id: r.id, number: r.number, counterparty_name: r.counterparty_name,
+        due_date: r.due_date, status: r.status,
+        remaining_display: fmt(Number(r.remaining_kopecks)),
+      })),
+    });
+  } catch (e) {
+    return dbErr(res, e, '[dashboard reminders]');
+  }
+});
+
 router.get('/', authMiddleware, async (req, res) => {
   const orgId = req.user.org_id;
   try {

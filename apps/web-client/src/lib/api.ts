@@ -99,6 +99,10 @@ export const api = {
   dashboard: {
     summary: (org_id?: string) =>
       req(`/dashboard${org_id ? `?org_id=${org_id}` : ''}`),
+    // Напоминания об оплате для всплывающего окна в личном кабинете — счета,
+    // до срока которых осталось не больше настроенного числа дней, плюс уже
+    // просроченные. Email/мессенджеры пока не подключены — это задел на будущее.
+    reminders: () => req('/dashboard/reminders'),
   },
 
   invoices: {
