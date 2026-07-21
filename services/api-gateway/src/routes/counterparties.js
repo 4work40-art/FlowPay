@@ -6,6 +6,7 @@ const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
 const { isValidOgrn, isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
 const dadata = require('../lib/dadata');
+const { classifyAbc } = require('../lib/abcAnalysis');
 
 // Банковские реквизиты и ОГРН — та же схема валидации формата, что и у
 // ИНН/КПП в этом файле (см. validateRequisites): явно неверный формат
@@ -41,6 +42,40 @@ router.get('/suggest', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('[counterparty suggest]', e.message);
     return err(res, 502, 'Сервис подсказок временно недоступен', 'SUGGEST_UNAVAILABLE');
+  }
+});
+
+// Рейтинг поставщиков по объёму закупок (ABC-анализ, правило Парето) —
+// не путать с текущим долгом (см. GET / ниже): здесь считаем сумму
+// ВЫСТАВЛЕННЫХ счетов за период — это объём сотрудничества, а не факт
+// оплаты. Счета в статусе DISPUTED/WRITTEN_OFF исключены — спорная или
+// списанная сумма не считается состоявшейся закупкой.
+router.get('/rating', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
+  const { from, to } = req.query;
+  try {
+    const params = [orgId];
+    let where = "i.org_id = $1 AND i.status NOT IN ('DISPUTED','WRITTEN_OFF')";
+    if (from) { params.push(from); where += ` AND COALESCE(i.invoice_date, i.created_at::date) >= $${params.length}`; }
+    if (to)   { params.push(to);   where += ` AND COALESCE(i.invoice_date, i.created_at::date) <= $${params.length}`; }
+
+    const { rows } = await pool.query(`
+      SELECT c.id AS counterparty_id, c.name, c.inn, SUM(i.amount_kopecks) AS total_kopecks
+      FROM invoices i
+      JOIN counterparties c ON c.id = i.counterparty_id
+      WHERE ${where}
+      GROUP BY c.id, c.name, c.inn
+    `, params);
+
+    const items = classifyAbc(rows.map(r => ({ ...r, total_kopecks: Number(r.total_kopecks) })));
+    const total_kopecks = items.reduce((sum, it) => sum + it.total_kopecks, 0);
+
+    return ok(res, {
+      items: items.map(it => ({ ...it, total_display: fmt(it.total_kopecks) })),
+      total_kopecks, total_display: fmt(total_kopecks),
+    });
+  } catch (e) {
+    return dbErr(res, e, '[counterparties rating]');
   }
 });
 

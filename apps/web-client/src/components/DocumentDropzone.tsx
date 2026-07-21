@@ -59,6 +59,9 @@ export type RecognizedPaymentOrder = {
   };
   confidence: number | null;
   matched_invoices: { id: string; number: string; remaining_kopecks: number }[];
+  // Платёж с таким же номером/датой/суммой по найденному счёту уже
+  // зафиксирован — почти наверняка эта платёжка уже была загружена раньше.
+  duplicate: { payment_id: string; invoice_id: string; payment_date: string } | null;
 };
 export type RecognizedUnknown = { doc_type: 'unknown'; fields: Record<string, any>; confidence: null };
 export type Recognized = RecognizedInvoice | RecognizedInvoiceForVat | RecognizedPaymentOrder | RecognizedUnknown;

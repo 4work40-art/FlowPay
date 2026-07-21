@@ -4,6 +4,7 @@ const { pool } = require('./lib/db');
 const { startOverdueJob } = require('./lib/overdueJob');
 const { startSubscriptionExpiryJob } = require('./lib/subscriptionExpiryJob');
 const { startOverdueDigestJob } = require('./lib/overdueDigestJob');
+const { startDueSoonDigestJob } = require('./lib/dueSoonDigestJob');
 
 const app  = express();
 const port = process.env.PORT || 3001;
@@ -29,6 +30,7 @@ app.use('/api/v1/audit',          require('./routes/audit'));
 app.use('/api/v1/admin',          require('./routes/admin'));
 app.use('/api/v1/billing',        require('./routes/billing'));
 app.use('/api/v1/organizations',  require('./routes/organizations'));
+app.use('/api/v1/analytics',      require('./routes/analytics'));
 app.use('/api/v1',                require('./routes/documents'));
 app.use('/api/v1/public',         require('./routes/public'));
 
@@ -53,6 +55,7 @@ async function start() {
   startOverdueJob();
   startSubscriptionExpiryJob();
   startOverdueDigestJob();
+  startDueSoonDigestJob();
 
   app.listen(port, () => {
     console.log('\n========================================');

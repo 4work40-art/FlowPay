@@ -12,6 +12,8 @@ router.get('/', authMiddleware, async (req, res) => {
   const status = req.query.status;
   const from   = req.query.from; // YYYY-MM-DD, по invoice_date
   const to     = req.query.to;
+  const dueFrom = req.query.due_from; // YYYY-MM-DD, по due_date (для календаря оплат)
+  const dueTo   = req.query.due_to;
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -22,6 +24,8 @@ router.get('/', authMiddleware, async (req, res) => {
     if (status) { params.push(status.toUpperCase()); where += ` AND i.status = $${params.length}`; }
     if (from)   { params.push(from); where += ` AND i.created_at >= $${params.length}`; }
     if (to)     { params.push(to);   where += ` AND i.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
+    if (dueFrom) { params.push(dueFrom); where += ` AND i.due_date >= $${params.length}`; }
+    if (dueTo)   { params.push(dueTo);   where += ` AND i.due_date <= $${params.length}`; }
 
     const { rows } = await pool.query(`
       SELECT i.*, c.name AS counterparty_name,
@@ -66,6 +70,10 @@ router.get('/:id', authMiddleware, async (req, res) => {
       'SELECT * FROM payments WHERE invoice_id = $1 ORDER BY created_at DESC',
       [req.params.id]
     );
+    const items = await pool.query(
+      'SELECT * FROM invoice_items WHERE invoice_id = $1 ORDER BY created_at',
+      [req.params.id]
+    );
 
     const inv = rows[0];
     return ok(res, {
@@ -74,18 +82,51 @@ router.get('/:id', authMiddleware, async (req, res) => {
       paid_display:      fmt(inv.paid_kopecks),
       remaining_display: fmt(inv.remaining_kopecks),
       payments: pmts.rows.map(p => ({ ...p, amount_display: fmt(p.amount_kopecks) })),
+      items: items.rows.map(it => ({ ...it, amount_display: fmt(it.amount_kopecks), unit_price_display: fmt(it.unit_price_kopecks) })),
     });
   } catch (e) {
     return dbErr(res, e, '[invoice get]');
   }
 });
 
+// Позиции счёта — свободный формат (name/quantity/unit/unit_price_kopecks),
+// без привязки к справочнику номенклатуры. Валидируем только числа: сумма
+// позиции всегда пересчитывается на сервере (quantity * unit_price), не
+// доверяем присланному amount_kopecks позиции.
+function validateItems(items) {
+  if (items === undefined) return null;
+  if (!Array.isArray(items)) return 'Позиции счёта должны быть массивом';
+  for (const it of items) {
+    if (!it || typeof it.name !== 'string' || !it.name.trim())
+      return 'У каждой позиции должно быть название';
+    if (!Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0)
+      return `Некорректное количество у позиции «${it.name}»`;
+    if (!Number.isInteger(it.unit_price_kopecks) || it.unit_price_kopecks <= 0)
+      return `Некорректная цена у позиции «${it.name}»`;
+  }
+  return null;
+}
+
+async function insertItems(client, orgId, invoiceId, items) {
+  for (const it of items) {
+    const quantity = Number(it.quantity);
+    const amount = Math.round(quantity * it.unit_price_kopecks);
+    await client.query(
+      `INSERT INTO invoice_items(org_id, invoice_id, name, quantity, unit, unit_price_kopecks, amount_kopecks)
+       VALUES($1,$2,$3,$4,$5,$6,$7)`,
+      [orgId, invoiceId, it.name.trim(), quantity, it.unit || null, it.unit_price_kopecks, amount]
+    );
+  }
+}
+
 router.post('/', authMiddleware, async (req, res) => {
-  const { amount_kopecks, number, counterparty_id, due_date, invoice_date, notes } = req.body || {};
+  const { amount_kopecks, number, counterparty_id, due_date, invoice_date, notes, items } = req.body || {};
   if (!amount_kopecks || amount_kopecks <= 0)
     return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
     return err(res, 400, 'Сумма должна быть целым числом (в копейках)', 'VALIDATION_ERROR');
+  const itemsError = validateItems(items);
+  if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
 
   try {
     const orgId = req.user.org_id;
@@ -120,7 +161,9 @@ router.post('/', authMiddleware, async (req, res) => {
       VALUES($1,$2,$3,$4,$5,$6,$7,'CREATED',$8) RETURNING *
     `, [orgId, counterparty_id || null, finalNumber, amount_kopecks, due_date || null, invoice_date || null, notes || null, req.user.id]);
 
-    await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
+    if (items?.length) await insertItems(pool, orgId, rows[0].id, items);
+
+    await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED', items_count: items?.length || 0 });
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);
   } catch (e) {
     return dbErr(res, e, '[invoice create]');
@@ -297,6 +340,43 @@ router.patch('/:id/public', authMiddleware, async (req, res) => {
     return ok(res, rows[0]);
   } catch (e) {
     return dbErr(res, e, '[invoice public toggle]');
+  }
+});
+
+// Добавить позицию к уже созданному счёту — например, забыли внести товар
+// при первичном вводе, или заполняют позиции постепенно.
+router.post('/:id/items', authMiddleware, async (req, res) => {
+  const { name, quantity, unit, unit_price_kopecks } = req.body || {};
+  const itemsError = validateItems([{ name, quantity, unit, unit_price_kopecks }]);
+  if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
+  try {
+    const inv = await pool.query('SELECT id FROM invoices WHERE id=$1 AND org_id=$2', [req.params.id, req.user.org_id]);
+    if (!inv.rows.length) return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
+
+    const amount = Math.round(Number(quantity) * unit_price_kopecks);
+    const { rows } = await pool.query(
+      `INSERT INTO invoice_items(org_id, invoice_id, name, quantity, unit, unit_price_kopecks, amount_kopecks)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.user.org_id, req.params.id, name.trim(), Number(quantity), unit || null, unit_price_kopecks, amount]
+    );
+    await audit(req.user.org_id, req.user.id, 'invoice_item.created', 'invoice_item', rows[0].id, null, { invoice_id: req.params.id, name });
+    return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks), unit_price_display: fmt(rows[0].unit_price_kopecks) }, 201);
+  } catch (e) {
+    return dbErr(res, e, '[invoice item create]');
+  }
+});
+
+router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `DELETE FROM invoice_items WHERE id=$1 AND invoice_id=$2 AND org_id=$3 RETURNING id`,
+      [req.params.itemId, req.params.id, req.user.org_id]
+    );
+    if (!rows.length) return err(res, 404, 'Позиция не найдена', 'NOT_FOUND');
+    await audit(req.user.org_id, req.user.id, 'invoice_item.deleted', 'invoice_item', req.params.itemId, null, { invoice_id: req.params.id });
+    return ok(res, { deleted: true });
+  } catch (e) {
+    return dbErr(res, e, '[invoice item delete]');
   }
 });
 

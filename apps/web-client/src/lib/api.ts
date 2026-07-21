@@ -6,6 +6,10 @@ export function apiUrl(path: string): string {
   return `${BASE}${path}`;
 }
 
+// Позиция счёта (товар/услуга) — учёт купленного: количество, цена за
+// единицу; сумма позиции всегда пересчитывается на сервере.
+export type InvoiceItemInput = { name: string; quantity: number; unit?: string; unit_price_kopecks: number };
+
 // Строка распознанного реестра счетов (POST /documents/recognize-register)
 export type RegisterRow = {
   row: number;
@@ -63,7 +67,9 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
   const data = await res.json();
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+    const e = new Error(msg) as Error & { code?: string };
+    e.code = data?.error?.code;
+    throw e;
   }
   return data;
 }
@@ -107,11 +113,16 @@ export const api = {
       due_date?: string;
       invoice_date?: string;
       notes?: string;
+      items?: InvoiceItemInput[];
     }) => req('/invoices', { method:'POST', body:JSON.stringify(body) }),
     transition: (id: string, transition: string, reason?: string) =>
       req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
     setPublic: (id: string, enabled: boolean) =>
       req(`/invoices/${id}/public`, { method:'PATCH', body:JSON.stringify({ enabled }) }),
+    addItem: (invoiceId: string, item: InvoiceItemInput) =>
+      req(`/invoices/${invoiceId}/items`, { method:'POST', body:JSON.stringify(item) }),
+    deleteItem: (invoiceId: string, itemId: string) =>
+      req(`/invoices/${invoiceId}/items/${itemId}`, { method:'DELETE' }),
     // Массовое создание счетов из проверенного пользователем реестра.
     bulkCreate: (items: BulkInvoiceItem[]): Promise<{
       success: true;
@@ -201,6 +212,7 @@ export const api = {
       method?: string;
       reference?: string;
       payment_date?: string;
+      force?: boolean;
     }) => req('/payments', { method:'POST', body:JSON.stringify(body) }),
     importBankStatement: async (file: File) => {
       const token = getStoredToken();
@@ -220,12 +232,20 @@ export const api = {
   counterparties: {
     list: () => req('/counterparties'),
     suggest: (inn: string) => req(`/counterparties/suggest?inn=${encodeURIComponent(inn)}`),
+    rating: (params: { from?: string; to?: string } = {}) =>
+      req(`/counterparties/rating?${new URLSearchParams(params as Record<string, string>)}`),
     create: (body: {
       name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string;
       ogrn?: string; bank_account?: string; bank_name?: string; bank_bik?: string; bank_corr_account?: string;
     }) => req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
+  },
+
+  analytics: {
+    items: () => req('/analytics/items'),
+    itemHistory: (name: string, months = 12) =>
+      req(`/analytics/items/${encodeURIComponent(name)}/history?months=${months}`),
   },
 
   users: {
@@ -253,6 +273,10 @@ export const api = {
       req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
     deleteMe: (password: string) =>
       req('/organizations/me', { method:'DELETE', body:JSON.stringify({ password }) }),
+    getReminderSettings: (): Promise<{ success: true; data: { reminder_days_before: number } }> =>
+      req('/organizations/me/reminder-settings'),
+    updateReminderSettings: (reminder_days_before: number) =>
+      req('/organizations/me/reminder-settings', { method:'PATCH', body:JSON.stringify({ reminder_days_before }) }),
     fetchLogoBlobUrl: async (): Promise<string | null> => {
       const token = getStoredToken();
       const res = await fetch(apiUrl('/organizations/me/logo'), {

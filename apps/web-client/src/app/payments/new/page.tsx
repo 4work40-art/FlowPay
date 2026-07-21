@@ -29,6 +29,8 @@ export default function NewPaymentPage() {
   const [error,   setError]   = useState('');
   const [saving,  setSaving]  = useState(false);
   const [recognizedNotice, setRecognizedNotice] = useState('');
+  const [duplicateWarning, setDuplicateWarning] = useState('');
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
   // Пока счёт не выбран: кандидаты по распознанной платёжке или ручной поиск.
   const [candidates, setCandidates] = useState<{ id: string; number: string }[]>([]);
@@ -51,7 +53,20 @@ export default function NewPaymentPage() {
     router.replace(`/payments/new?${qp.toString()}`);
   };
 
+  const applyDuplicateWarning = (r: Recognized) => {
+    if ('duplicate' in r && r.duplicate) {
+      setDuplicateWarning(
+        `Похоже, эта платёжка уже была загружена раньше — платёж с таким же номером, датой и суммой по этому счёту уже зафиксирован (${r.duplicate.payment_date}). ` +
+        'Если это действительно другой, отдельный платёж — подтвердите ниже.'
+      );
+      setConfirmDuplicate(false);
+    } else {
+      setDuplicateWarning('');
+    }
+  };
+
   const handleRecognizedNoInvoice = async (r: Recognized) => {
+    applyDuplicateWarning(r);
     if (r.doc_type === 'payment_order') {
       const matched = r.matched_invoices ?? [];
       if (matched.length === 1) {
@@ -81,6 +96,7 @@ export default function NewPaymentPage() {
 
   const handleRecognizedWithInvoice = (r: Recognized) => {
     setRecognizedNotice('Данные распознаны из файла — проверьте перед сохранением, OCR может ошибаться.');
+    applyDuplicateWarning(r);
     if (r.fields.amount_kopecks) setAmount(String(r.fields.amount_kopecks / 100));
     const payDate = 'payment_date' in r.fields ? r.fields.payment_date : null;
     if (payDate) setDate(payDate);
@@ -153,6 +169,10 @@ export default function NewPaymentPage() {
     setError('');
     const rub = Number(amount.replace(',', '.'));
     if (!rub || rub <= 0) { setError('Укажите сумму больше нуля'); return; }
+    if (duplicateWarning && !confirmDuplicate) {
+      setError('Подтвердите, что это другой платёж, прежде чем продолжить.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -160,9 +180,17 @@ export default function NewPaymentPage() {
         invoice_id: invoiceId,
         amount_kopecks: Math.round(rub * 100),
         method, reference: ref || undefined, payment_date: date,
+        force: confirmDuplicate || undefined,
       });
       router.replace(`/invoices/${invoiceId}`);
     } catch (e: any) {
+      // Подстраховка на случай, если предупреждение при распознавании не
+      // сработало (например, платёж введён вручную без файла) — сервер всё
+      // равно проверяет дубль при сохранении.
+      if (e.code === 'DUPLICATE_PAYMENT') {
+        setDuplicateWarning(e.message);
+        setConfirmDuplicate(false);
+      }
       setError(e.message || 'Не удалось зафиксировать платёж');
     } finally {
       setSaving(false);
@@ -201,6 +229,15 @@ export default function NewPaymentPage() {
                 {recognizedNotice}
               </div>
             )}
+            {duplicateWarning && (
+              <div className="error-box" style={{ marginBottom: 14 }}>
+                <div style={{ marginBottom: 8 }}>⚠️ {duplicateWarning}</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 400, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={confirmDuplicate} onChange={e => setConfirmDuplicate(e.target.checked)} />
+                  Это другой платёж — провести всё равно
+                </label>
+              </div>
+            )}
             {error && <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>}
 
             <div className="form-group">
@@ -223,7 +260,7 @@ export default function NewPaymentPage() {
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="btn btn-green" disabled={saving}>
+              <button type="submit" className="btn btn-green" disabled={saving || (!!duplicateWarning && !confirmDuplicate)}>
                 {saving ? 'Сохраняем…' : 'Зафиксировать платёж'}
               </button>
               <a href={`/invoices/${invoiceId}`} className="btn">Отмена</a>

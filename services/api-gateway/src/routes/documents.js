@@ -62,6 +62,7 @@ router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res)
       // по номеру, упомянутому в назначении платежа — той же логикой точного
       // совпадения токена, что и импорт банковской выписки.
       let matchedInvoices = [];
+      let duplicate = null;
       const refNumber = result.fields.referenced_invoice_number;
       if (refNumber) {
         const { rows } = await pool.query(
@@ -74,10 +75,30 @@ router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res)
           .map(inv => ({ id: inv.id, number: inv.number, remaining_kopecks: Number(inv.amount_kopecks) - Number(inv.paid_kopecks) }));
       }
 
-      await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
-        null, { doc_type: result.doc_type, filename: req.file.originalname });
+      // Платёжное поручение имеет собственный номер — если платёж с таким же
+      // номером, датой и суммой по этому же счёту уже зафиксирован, это
+      // почти наверняка повторная загрузка того же документа. Проверяем
+      // сразу на распознавании, до заполнения формы пользователем.
+      if (result.doc_type === 'payment_order' && result.fields.number && matchedInvoices.length === 1) {
+        const { rows: dupRows } = await pool.query(
+          `SELECT id, invoice_id, payment_date FROM payments
+           WHERE org_id=$1 AND invoice_id=$2 AND reference=$3 AND payment_date=$4 AND amount_kopecks=$5
+           LIMIT 1`,
+          [req.user.org_id, matchedInvoices[0].id, result.fields.number, result.fields.payment_date, result.fields.amount_kopecks]
+        );
+        if (dupRows.length) {
+          const dupDate = dupRows[0].payment_date;
+          duplicate = {
+            payment_id: dupRows[0].id, invoice_id: dupRows[0].invoice_id,
+            payment_date: dupDate instanceof Date ? dupDate.toISOString().slice(0, 10) : dupDate,
+          };
+        }
+      }
 
-      return ok(res, { ...result, matched_invoices: matchedInvoices });
+      await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
+        null, { doc_type: result.doc_type, filename: req.file.originalname, duplicate: !!duplicate });
+
+      return ok(res, { ...result, matched_invoices: matchedInvoices, duplicate });
     } catch (e) {
       console.error('[document recognize]', e.message);
       return err(res, 502, 'Не удалось распознать документ — попробуйте другой файл или введите данные вручную', 'RECOGNIZE_FAILED');

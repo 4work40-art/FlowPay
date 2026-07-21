@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import DocumentDropzone, { Recognized } from '@/components/DocumentDropzone';
+import type { InvoiceItemInput } from '@/lib/api';
 
 type Counterparty = { id: string; name: string; inn: string | null };
+type ItemRow = { name: string; quantity: string; unit: string; price: string };
+const emptyItemRow = (): ItemRow => ({ name: '', quantity: '1', unit: 'шт', price: '' });
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -19,6 +22,19 @@ export default function NewInvoicePage() {
   const [recognizedNotice, setRecognizedNotice] = useState('');
   const [counterpartyNotice, setCounterpartyNotice] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
+  const [itemRows, setItemRows] = useState<ItemRow[]>([]);
+
+  const itemsTotal = itemRows.reduce((sum, r) => {
+    const q = Number(r.quantity.replace(',', '.')), p = Number(r.price.replace(',', '.'));
+    return sum + (Number.isFinite(q) && Number.isFinite(p) ? q * p : 0);
+  }, 0);
+
+  const validItems = (): InvoiceItemInput[] => itemRows
+    .filter(r => r.name.trim() && Number(r.quantity.replace(',', '.')) > 0 && Number(r.price.replace(',', '.')) > 0)
+    .map(r => ({
+      name: r.name.trim(), quantity: Number(r.quantity.replace(',', '.')), unit: r.unit || undefined,
+      unit_price_kopecks: Math.round(Number(r.price.replace(',', '.')) * 100),
+    }));
 
   const loadCounterparties = () =>
     api.counterparties.list().then(res => setCounterparties(res.data?.items ?? [])).catch(() => {});
@@ -94,6 +110,7 @@ export default function NewInvoicePage() {
 
     setSaving(true);
     try {
+      const items = validItems();
       const res = await api.invoices.create({
         amount_kopecks: Math.round(rub * 100),
         number: number || undefined,
@@ -101,6 +118,7 @@ export default function NewInvoicePage() {
         due_date: dueDate || undefined,
         invoice_date: invoiceDate || undefined,
         notes: notes || undefined,
+        items: items.length ? items : undefined,
       });
       router.replace(`/invoices/${res.data.id}`);
     } catch (e: any) {
@@ -175,6 +193,36 @@ export default function NewInvoicePage() {
                 <label className="field-label">Примечание</label>
                 <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
               </div>
+            </div>
+
+            <div style={{ marginTop: 18, marginBottom: 8 }}>
+              <div className="field-label" style={{ marginBottom: 8 }}>
+                Товары/услуги <span style={{ fontWeight: 400, color: 'var(--text2)' }}>(необязательно — для учёта закупок и аналитики цен)</span>
+              </div>
+              {itemRows.map((row, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <input style={{ flex: 3 }} placeholder="Наименование" value={row.name}
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, name: e.target.value } : r))} />
+                  <input style={{ flex: 1 }} placeholder="Кол-во" inputMode="decimal" value={row.quantity}
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, quantity: e.target.value } : r))} />
+                  <input style={{ flex: 1 }} placeholder="Ед." value={row.unit}
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, unit: e.target.value } : r))} />
+                  <input style={{ flex: 1 }} placeholder="Цена, ₽" inputMode="decimal" value={row.price}
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, price: e.target.value } : r))} />
+                  <button type="button" className="btn btn-sm" onClick={() => setItemRows(rows => rows.filter((_, idx) => idx !== i))}>✕</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-sm" onClick={() => setItemRows(rows => [...rows, emptyItemRow()])}>
+                + Добавить позицию
+              </button>
+              {itemRows.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text2)' }}>
+                  Сумма по позициям: {itemsTotal.toLocaleString('ru-RU')} ₽
+                  {Math.round(itemsTotal * 100) !== Math.round(Number(amount.replace(',', '.') || '0') * 100) && amount && (
+                    <span style={{ color: 'var(--amber-dark, #a06a00)' }}> — не совпадает с суммой счёта выше, это нормально, если счёт включает не только перечисленные позиции</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="form-actions">
