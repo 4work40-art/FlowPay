@@ -80,7 +80,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 });
 
 router.post('/', authMiddleware, async (req, res) => {
-  const { amount_kopecks, number, counterparty_id, due_date, notes } = req.body || {};
+  const { amount_kopecks, number, counterparty_id, due_date, invoice_date, notes } = req.body || {};
   if (!amount_kopecks || amount_kopecks <= 0)
     return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
@@ -115,9 +115,9 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, notes, status, created_by)
-      VALUES($1,$2,$3,$4,$5,$6,'CREATED',$7) RETURNING *
-    `, [orgId, counterparty_id || null, finalNumber, amount_kopecks, due_date || null, notes || null, req.user.id]);
+      INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, invoice_date, notes, status, created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'CREATED',$8) RETURNING *
+    `, [orgId, counterparty_id || null, finalNumber, amount_kopecks, due_date || null, invoice_date || null, notes || null, req.user.id]);
 
     await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED' });
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);

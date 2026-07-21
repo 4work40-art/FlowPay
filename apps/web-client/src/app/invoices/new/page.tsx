@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import DocumentDropzone, { Recognized } from '@/components/DocumentDropzone';
 
-type Counterparty = { id: string; name: string };
+type Counterparty = { id: string; name: string; inn: string | null };
 
 export default function NewInvoicePage() {
   const router = useRouter();
@@ -15,12 +16,50 @@ export default function NewInvoicePage() {
   const [notes,    setNotes]    = useState('');
   const [error,    setError]    = useState('');
   const [saving,   setSaving]   = useState(false);
+  const [recognizedNotice, setRecognizedNotice] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
 
-  useEffect(() => {
-    api.counterparties.list()
-      .then(res => setCounterparties(res.data?.items ?? []))
-      .catch(() => {});
-  }, []);
+  const loadCounterparties = () =>
+    api.counterparties.list().then(res => setCounterparties(res.data?.items ?? [])).catch(() => {});
+
+  useEffect(() => { loadCounterparties(); }, []);
+
+  const handleRecognized = async (r: Recognized) => {
+    if (r.doc_type !== 'invoice') {
+      setRecognizedNotice(
+        r.doc_type === 'payment_order'
+          ? 'В файле похоже на платёжное поручение, а не счёт — если это платёж, зафиксируйте его на странице счёта.'
+          : 'Не удалось однозначно распознать документ — поля ниже заполнены тем, что удалось найти, проверьте перед сохранением.'
+      );
+    } else {
+      setRecognizedNotice('Данные распознаны из файла — проверьте перед сохранением, OCR может ошибаться.');
+    }
+
+    const f = r.fields;
+    if (f.amount_kopecks) setAmount(String(f.amount_kopecks / 100));
+    if ('number' in f && f.number) setNumber(f.number);
+    if ('invoice_date' in f && f.invoice_date) setInvoiceDate(f.invoice_date);
+
+    // Пытаемся сопоставить контрагента по ИНН среди уже существующих;
+    // не находим — предлагаем создать нового прямо из распознанных данных.
+    const inn = 'inn' in f ? f.inn : ('inns' in f ? f.inns?.[0] : null);
+    if (inn) {
+      const existing = counterparties.find(c => c.inn === inn);
+      if (existing) {
+        setCpId(existing.id);
+      } else if ('supplier_name' in f && f.supplier_name) {
+        try {
+          const created = await api.counterparties.create({
+            name: f.supplier_name, inn: inn || undefined, kpp: ('kpp' in f && f.kpp) || undefined,
+          });
+          await loadCounterparties();
+          setCpId(created.data.id);
+        } catch {
+          // ИНН/название не прошли валидацию — не страшно, пользователь выберет контрагента вручную
+        }
+      }
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +74,7 @@ export default function NewInvoicePage() {
         number: number || undefined,
         counterparty_id: cpId || undefined,
         due_date: dueDate || undefined,
+        invoice_date: invoiceDate || undefined,
         notes: notes || undefined,
       });
       router.replace(`/invoices/${res.data.id}`);
@@ -52,9 +92,18 @@ export default function NewInvoicePage() {
         <a href="/invoices" className="btn btn-sm">← К списку</a>
       </div>
 
+      <div style={{ maxWidth: 560 }}>
+        <DocumentDropzone onRecognized={handleRecognized} />
+      </div>
+
       <div className="card" style={{ maxWidth: 560 }}>
         <div className="card-body">
           <form onSubmit={submit}>
+            {recognizedNotice && (
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+                {recognizedNotice}
+              </div>
+            )}
             {error && <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>}
 
             <div className="form-grid">
@@ -80,6 +129,11 @@ export default function NewInvoicePage() {
                 {!counterparties.length && (
                   <span className="field-hint">Нет контрагентов — можно <a href="/counterparties">добавить</a> или оставить пустым.</span>
                 )}
+              </div>
+
+              <div className="form-group">
+                <label className="field-label">Дата счёта</label>
+                <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
               </div>
 
               <div className="form-group">
