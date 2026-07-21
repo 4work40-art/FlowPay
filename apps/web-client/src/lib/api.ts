@@ -242,6 +242,12 @@ export const api = {
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
   },
 
+  analytics: {
+    items: () => req('/analytics/items'),
+    itemHistory: (name: string, months = 12) =>
+      req(`/analytics/items/${encodeURIComponent(name)}/history?months=${months}`),
+  },
+
   users: {
     me: () => req('/users/me'),
     list: () => req('/users'),

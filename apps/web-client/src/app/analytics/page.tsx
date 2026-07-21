@@ -72,6 +72,7 @@ export default function AnalyticsPage() {
     <div>
       <div className="page-header">
         <div className="page-title">Аналитика</div>
+        <a href="/analytics/items" className="btn btn-sm">📦 Учёт товаров/услуг</a>
       </div>
 
       <div className="metric-grid" style={{ marginBottom: 24 }}>
