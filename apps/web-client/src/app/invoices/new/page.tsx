@@ -25,37 +25,50 @@ export default function NewInvoicePage() {
   useEffect(() => { loadCounterparties(); }, []);
 
   const handleRecognized = async (r: Recognized) => {
-    if (r.doc_type !== 'invoice') {
-      setRecognizedNotice(
-        r.doc_type === 'payment_order'
-          ? 'В файле похоже на платёжное поручение, а не счёт — если это платёж, зафиксируйте его на странице счёта.'
-          : 'Не удалось однозначно распознать документ — поля ниже заполнены тем, что удалось найти, проверьте перед сохранением.'
-      );
+    const confidenceNote = r.confidence != null ? ` Уверенность распознавания: ${r.confidence}%.` : '';
+    if (r.doc_type === 'payment_order') {
+      setRecognizedNotice('В файле похоже на платёжное поручение, а не счёт — если это платёж, зафиксируйте его на странице счёта.');
+      return;
+    }
+    if (r.doc_type === 'unknown') {
+      setRecognizedNotice('Не удалось однозначно распознать документ — поля ниже заполнены тем, что удалось найти, проверьте перед сохранением.');
+    } else if (r.doc_type === 'invoice_for_vat') {
+      setRecognizedNotice(`Это похоже на счёт-фактуру/УПД, а не на обычный счёт на оплату — данные всё равно перенесены в форму, проверьте перед сохранением.${confidenceNote}`);
     } else {
-      setRecognizedNotice('Данные распознаны из файла — проверьте перед сохранением, OCR может ошибаться.');
+      setRecognizedNotice(`Данные распознаны из файла — проверьте перед сохранением, OCR может ошибаться.${confidenceNote}`);
     }
 
-    const f = r.fields;
+    const f: any = r.fields;
     if (f.amount_kopecks) setAmount(String(f.amount_kopecks / 100));
-    if ('number' in f && f.number) setNumber(f.number);
-    if ('invoice_date' in f && f.invoice_date) setInvoiceDate(f.invoice_date);
+    if (f.number) setNumber(f.number);
+    if (f.invoice_date) setInvoiceDate(f.invoice_date);
+
+    // Счёт-фактура/УПД называет стороны "продавец/покупатель", обычный счёт —
+    // "поставщик"; приводим к одному имени и ИНН для дальнейшего сопоставления.
+    const supplierName = r.doc_type === 'invoice_for_vat' ? f.seller_name : f.supplier_name;
+    const inn = r.doc_type === 'invoice_for_vat' ? f.seller_inn : (f.inn ?? f.inns?.[0] ?? null);
+    const kpp = r.doc_type === 'invoice_for_vat' ? f.kpps?.[0] : f.kpp;
 
     // Пытаемся сопоставить контрагента по ИНН среди уже существующих;
-    // не находим — предлагаем создать нового прямо из распознанных данных.
-    const inn = 'inn' in f ? f.inn : ('inns' in f ? f.inns?.[0] : null);
+    // не находим — предлагаем создать нового прямо из распознанных данных,
+    // включая ОГРН/адрес/банковские реквизиты, если счёт их указывает —
+    // чтобы не приходилось вбивать их вручную при следующей оплате.
     if (inn) {
       const existing = counterparties.find(c => c.inn === inn);
       if (existing) {
         setCpId(existing.id);
-      } else if ('supplier_name' in f && f.supplier_name) {
+      } else if (supplierName) {
         try {
           const created = await api.counterparties.create({
-            name: f.supplier_name, inn: inn || undefined, kpp: ('kpp' in f && f.kpp) || undefined,
+            name: supplierName, inn: inn || undefined, kpp: kpp || undefined,
+            ogrn: f.ogrn || undefined, address: f.address || undefined,
+            bank_account: f.bank_account || undefined, bank_name: f.bank_name || undefined,
+            bank_bik: f.bank_bik || undefined, bank_corr_account: f.bank_corr_account || undefined,
           });
           await loadCounterparties();
           setCpId(created.data.id);
         } catch {
-          // ИНН/название не прошли валидацию — не страшно, пользователь выберет контрагента вручную
+          // ИНН/название/реквизиты не прошли валидацию — не страшно, пользователь выберет контрагента вручную
         }
       }
     }

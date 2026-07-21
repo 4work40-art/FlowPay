@@ -6,6 +6,31 @@ export function apiUrl(path: string): string {
   return `${BASE}${path}`;
 }
 
+// Строка распознанного реестра счетов (POST /documents/recognize-register)
+export type RegisterRow = {
+  row: number;
+  number: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  amount_kopecks: number | null;
+  counterparty_name: string | null;
+  counterparty_inn: string | null;
+  notes: string | null;
+  warnings: string[];
+};
+
+// Элемент массового создания счетов (POST /invoices/bulk)
+export type BulkInvoiceItem = {
+  number?: string;
+  amount_kopecks: number;
+  counterparty_id?: string;
+  counterparty_name?: string;
+  counterparty_inn?: string;
+  due_date?: string;
+  invoice_date?: string;
+  notes?: string;
+};
+
 function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('sk_token');
@@ -87,6 +112,14 @@ export const api = {
       req(`/invoices/${id}/state`, { method:'PATCH', body:JSON.stringify({ transition, reason }) }),
     setPublic: (id: string, enabled: boolean) =>
       req(`/invoices/${id}/public`, { method:'PATCH', body:JSON.stringify({ enabled }) }),
+    // Массовое создание счетов из проверенного пользователем реестра.
+    bulkCreate: (items: BulkInvoiceItem[]): Promise<{
+      success: true;
+      data: {
+        created: { row: number; invoice_id: string; number: string }[];
+        failed: { row: number; reason: string }[];
+      };
+    }> => req('/invoices/bulk', { method:'POST', body:JSON.stringify({ items }) }),
   },
 
   documents: {
@@ -97,6 +130,29 @@ export const api = {
       const form = new FormData();
       form.append('file', file);
       const res = await fetch(apiUrl('/documents/recognize'), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
+    // Распознавание реестра счетов (xlsx/xls/csv, выгрузка из 1С/МойСклад/СБИС) —
+    // возвращает построчный черновик для проверки перед массовым созданием счетов.
+    recognizeRegister: async (file: File): Promise<{
+      success: true;
+      data: {
+        items: RegisterRow[];
+        total_rows: number;
+        parsed_rows: number;
+        warning_rows: number;
+      };
+    }> => {
+      const token = getStoredToken();
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(apiUrl('/documents/recognize-register'), {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
@@ -164,8 +220,10 @@ export const api = {
   counterparties: {
     list: () => req('/counterparties'),
     suggest: (inn: string) => req(`/counterparties/suggest?inn=${encodeURIComponent(inn)}`),
-    create: (body: { name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string }) =>
-      req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
+    create: (body: {
+      name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string;
+      ogrn?: string; bank_account?: string; bank_name?: string; bank_bik?: string; bank_corr_account?: string;
+    }) => req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
   },

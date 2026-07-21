@@ -2,6 +2,14 @@
 import { useRef, useState } from 'react';
 import { api } from '@/lib/api';
 
+type BankRequisites = {
+  bank_account: string | null;
+  bank_corr_account: string | null;
+  bank_bik: string | null;
+  bank_name: string | null;
+};
+type Party = ({ inn: string | null; kpp: string | null } & Partial<BankRequisites>) | null;
+
 export type RecognizedInvoice = {
   doc_type: 'invoice';
   fields: {
@@ -11,7 +19,26 @@ export type RecognizedInvoice = {
     supplier_name: string | null;
     inn: string | null;
     kpp: string | null;
+    ogrn: string | null;
+    address: string | null;
+  } & Partial<BankRequisites>;
+  confidence: number | null;
+};
+export type RecognizedInvoiceForVat = {
+  doc_type: 'invoice_for_vat';
+  fields: {
+    number: string | null;
+    invoice_date: string | null;
+    amount_kopecks: number | null;
+    seller_name: string | null;
+    buyer_name: string | null;
+    seller_inn: string | null;
+    buyer_inn: string | null;
+    kpps: string[];
+    vat_rate: number | null;
+    vat_kopecks: number | null;
   };
+  confidence: number | null;
 };
 export type RecognizedPaymentOrder = {
   doc_type: 'payment_order';
@@ -22,11 +49,18 @@ export type RecognizedPaymentOrder = {
     purpose: string | null;
     referenced_invoice_number: string | null;
     inns: string[];
+    priority: number | null;
+    uin: string | null;
+    kbk: string | null;
+    oktmo: string | null;
+    payer: Party;
+    payee: Party;
   };
+  confidence: number | null;
   matched_invoices: { id: string; number: string; remaining_kopecks: number }[];
 };
-export type RecognizedUnknown = { doc_type: 'unknown'; fields: Record<string, any> };
-export type Recognized = RecognizedInvoice | RecognizedPaymentOrder | RecognizedUnknown;
+export type RecognizedUnknown = { doc_type: 'unknown'; fields: Record<string, any>; confidence: null };
+export type Recognized = RecognizedInvoice | RecognizedInvoiceForVat | RecognizedPaymentOrder | RecognizedUnknown;
 
 // Загрузка файла (счёт на оплату / платёжное поручение) с автораспознаванием:
 // PDF с текстовым слоем читается напрямую, скан или фото — через OCR.
