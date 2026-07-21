@@ -20,24 +20,36 @@ const recognizeLimiter = rateLimit({
   max: 30, windowSeconds: 60 * 60,
   message: 'Слишком много запросов на распознавание документов, попробуйте позже',
 });
+const RECOGNIZE_ALLOWED_MIME = new Set([
+  'application/pdf', 'image/jpeg', 'image/png',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls (в т.ч. устаревший бинарный формат)
+  'text/csv', 'application/csv',
+]);
 const recognizeUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype))
+    // Многие учётные системы печатают счёт в файл электронной таблицы
+    // вместо PDF — тоже нужно принимать и распознавать как один документ
+    // (не путать со страницей «Импорт реестра», где Excel — таблица счетов).
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extOk = ['.xlsx', '.xls', '.csv'].includes(ext);
+    if (!RECOGNIZE_ALLOWED_MIME.has(file.mimetype) && !extOk)
       return cb(new Error('UNSUPPORTED_TYPE'));
     cb(null, true);
   },
 });
 
 // Распознавание счёта на оплату / платёжного поручения из файла (PDF с
-// текстовым слоем — напрямую, скан/фото — через OCR). Результат — черновик
-// для проверки на форме создания счёта/платежа, ничего не сохраняется здесь.
+// текстовым слоем — напрямую, скан/фото — через OCR, Excel/CSV — как один
+// документ той же логикой). Результат — черновик для проверки на форме
+// создания счёта/платежа, ничего не сохраняется здесь.
 router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res) => {
   recognizeUpload.single('file')(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.message === 'UNSUPPORTED_TYPE'
-        ? 'Разрешены только PDF, JPG и PNG'
+        ? 'Разрешены только PDF, JPG, PNG, XLSX, XLS и CSV'
         : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 15 МБ' : 'Не удалось прочитать файл';
       return err(res, 400, message, 'VALIDATION_ERROR');
     }
