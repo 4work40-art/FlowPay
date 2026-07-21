@@ -367,6 +367,73 @@ function findStructuredAmount(rows, labelRe, allowZero = false) {
   return null;
 }
 
+function parseNum(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const n = Number(String(v).trim().replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Таблица товаров/услуг внутри счёта: ищем строку-заголовок с колонками
+// "Наименование"/"Кол-во" (плюс, если есть, "Ед. изм."/"Цена"/"Сумма") и
+// читаем строки под ней до итоговой строки. Работает и для настоящих
+// Excel/CSV-ячеек, и для текста из pdftotext -layout, если его предварительно
+// превратить в псевдо-ячейки (см. textToPseudoRows) — колонки там разделены
+// как минимум двумя пробелами, это стандартный вид табличной вёрстки в -layout.
+function findItemsFromRows(rows) {
+  if (!rows || !rows.length) return null;
+  const headerIdx = rows.findIndex(cells => {
+    if (!cells || !cells.length) return false;
+    const joined = cells.map(c => String(c || '').toLowerCase()).join(' ');
+    return /наименовани|товар|услуг/.test(joined) && /кол-во|количество/.test(joined);
+  });
+  if (headerIdx === -1) return null;
+
+  const header = rows[headerIdx].map(c => String(c || '').toLowerCase().trim());
+  const nameCol = header.findIndex(h => /наименовани|товар|услуг/.test(h));
+  const qtyCol = header.findIndex(h => /кол-во|количество/.test(h));
+  const unitCol = header.findIndex(h => /^ед\.?\s*изм|единиц/.test(h));
+  const priceCol = header.findIndex(h => /цена/.test(h));
+  const amountCol = header.findIndex(h => /сумма|стоимост/.test(h));
+  if (nameCol === -1 || qtyCol === -1) return null;
+
+  const items = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const cells = rows[i];
+    if (!cells || !cells.length) continue;
+    const nameRaw = cells[nameCol];
+    const name = nameRaw == null ? '' : String(nameRaw).trim();
+    if (!name) continue;
+    if (/^итого|^всего|^в\s*том\s*числе/i.test(name)) break;
+
+    const qty = parseNum(cells[qtyCol]);
+    if (qty == null || qty <= 0) continue;
+    const unit = unitCol !== -1 && cells[unitCol] != null ? String(cells[unitCol]).trim() || null : null;
+    const price = priceCol !== -1 ? parseNum(cells[priceCol]) : null;
+    const amount = amountCol !== -1 ? parseNum(cells[amountCol]) : null;
+
+    const unit_price_kopecks = price != null ? Math.round(price * 100)
+      : (amount != null && qty ? Math.round((amount / qty) * 100) : null);
+    const amount_kopecks = amount != null ? Math.round(amount * 100)
+      : (unit_price_kopecks != null ? Math.round(unit_price_kopecks * qty) : null);
+    if (!unit_price_kopecks || !amount_kopecks) continue;
+
+    items.push({ name, quantity: qty, unit, unit_price_kopecks, amount_kopecks });
+  }
+  return items.length ? items : null;
+}
+
+// Строки текста (pdftotext -layout) в псевдо-ячейки по границам в 2+ пробела —
+// тот же вид, что дают настоящие ячейки Excel/CSV, чтобы findItemsFromRows
+// работала одинаково для обоих источников.
+function textToPseudoRows(text) {
+  return text.split(/\r?\n/).map(line => line.split(/\s{2,}/).map(c => c.trim()).filter(Boolean));
+}
+
+function findItems(text, rows) {
+  return findItemsFromRows(rows) || findItemsFromRows(textToPseudoRows(text));
+}
+
 // Доля найденных ожидаемых полей — показывается пользователю как ориентир,
 // каким результатам можно доверять больше, а какие точно нужно перепроверить.
 function confidenceFor(docType, fields) {
@@ -408,6 +475,7 @@ async function recognize(buffer, filename, mimetype) {
       ogrn: findOgrns(text)[0] || null,
       address: findAddress(text),
       ...(findBankRequisites(text) || {}),
+      items: findItems(text, rows),
     };
     return { doc_type: 'invoice', fields, confidence: confidenceFor('invoice', fields), text_excerpt: text.trim().slice(0, 1500) };
   }
@@ -469,4 +537,5 @@ module.exports = {
   findOgrns, findBankRequisites, findSupplierName, findSupplierNameFallback, findBuyerName, findAddress,
   findPurpose, findReferencedInvoiceNumber, findPriority, findUin, findKbk,
   findOktmo, splitPayerPayee, confidenceFor, flattenRowsToText, findStructuredAmount,
+  findItems, findItemsFromRows, textToPseudoRows,
 };
