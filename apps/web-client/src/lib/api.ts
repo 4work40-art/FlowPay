@@ -267,6 +267,10 @@ export const api = {
       req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
     deleteMe: (password: string) =>
       req('/organizations/me', { method:'DELETE', body:JSON.stringify({ password }) }),
+    getReminderSettings: (): Promise<{ success: true; data: { reminder_days_before: number } }> =>
+      req('/organizations/me/reminder-settings'),
+    updateReminderSettings: (reminder_days_before: number) =>
+      req('/organizations/me/reminder-settings', { method:'PATCH', body:JSON.stringify({ reminder_days_before }) }),
     fetchLogoBlobUrl: async (): Promise<string | null> => {
       const token = getStoredToken();
       const res = await fetch(apiUrl('/organizations/me/logo'), {

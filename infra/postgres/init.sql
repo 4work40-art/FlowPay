@@ -15,6 +15,7 @@ CREATE TABLE organizations (
   invoice_limit INTEGER NOT NULL DEFAULT 5,
   next_invoice_seq INTEGER NOT NULL DEFAULT 1,
   logo_path VARCHAR(500),
+  reminder_days_before INTEGER NOT NULL DEFAULT 3 CHECK (reminder_days_before BETWEEN 0 AND 30),
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

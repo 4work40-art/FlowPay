@@ -4,6 +4,7 @@ const { pool } = require('./lib/db');
 const { startOverdueJob } = require('./lib/overdueJob');
 const { startSubscriptionExpiryJob } = require('./lib/subscriptionExpiryJob');
 const { startOverdueDigestJob } = require('./lib/overdueDigestJob');
+const { startDueSoonDigestJob } = require('./lib/dueSoonDigestJob');
 
 const app  = express();
 const port = process.env.PORT || 3001;
@@ -53,6 +54,7 @@ async function start() {
   startOverdueJob();
   startSubscriptionExpiryJob();
   startOverdueDigestJob();
+  startDueSoonDigestJob();
 
   app.listen(port, () => {
     console.log('\n========================================');

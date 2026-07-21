@@ -68,6 +68,39 @@ router.patch('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Настройка «за сколько дней до срока оплаты напоминать» — своя для каждой
+// организации (не глобальная переменная окружения).
+router.get('/me/reminder-settings', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT reminder_days_before FROM organizations WHERE id=$1', [req.user.org_id]);
+    if (!rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
+    return ok(res, rows[0]);
+  } catch (e) {
+    return dbErr(res, e, '[reminder settings get]');
+  }
+});
+
+router.patch('/me/reminder-settings', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'owner')
+    return err(res, 403, 'Изменять настройки организации может только владелец', 'FORBIDDEN');
+
+  const { reminder_days_before } = req.body || {};
+  if (!Number.isInteger(reminder_days_before) || reminder_days_before < 0 || reminder_days_before > 30)
+    return err(res, 400, 'Число дней должно быть целым от 0 до 30', 'VALIDATION_ERROR');
+
+  try {
+    const { rows } = await pool.query(
+      'UPDATE organizations SET reminder_days_before=$1, updated_at=NOW() WHERE id=$2 RETURNING reminder_days_before',
+      [reminder_days_before, req.user.org_id]
+    );
+    if (!rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
+    await audit(req.user.org_id, req.user.id, 'organization.reminder_settings_updated', 'organization', req.user.org_id, null, { reminder_days_before });
+    return ok(res, rows[0]);
+  } catch (e) {
+    return dbErr(res, e, '[reminder settings update]');
+  }
+});
+
 // Полное удаление организации со всеми данными (152-ФЗ: право на отзыв
 // согласия и уничтожение персональных данных). Необратимо. Каскадом уходят
 // счета, платежи, контрагенты, документы, подписки, транзакции, инвайты;

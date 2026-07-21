@@ -9,6 +9,7 @@ const NAV = [
   { href: '/dashboard',      icon: '📊', label: 'Дашборд'      },
   { href: '/invoices',       icon: '📋', label: 'Счета'        },
   { href: '/payments',       icon: '💳', label: 'Платежи'      },
+  { href: '/calendar',       icon: '📅', label: 'Календарь'    },
   { href: '/counterparties', icon: '🤝', label: 'Контрагенты'  },
   { href: '/analytics',      icon: '📈', label: 'Аналитика'    },
   { href: '/billing',        icon: '💰', label: 'Тариф'        },

@@ -43,6 +43,10 @@ export default function SettingsPage() {
   const [deleting,    setDeleting]    = useState(false);
   const [delConfirmOpen, setDelConfirmOpen] = useState(false);
 
+  const [reminderDays, setReminderDays] = useState('3');
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState('');
+
   const loadInvites = () => {
     if (me?.role !== 'owner') return;
     api.organization.invites.list().then(r => setInvites(r.data?.items ?? [])).catch(() => {});
@@ -51,6 +55,31 @@ export default function SettingsPage() {
   useEffect(() => {
     api.organization.fetchLogoBlobUrl().then(setLogoUrl).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.organization.getReminderSettings()
+      .then(r => setReminderDays(String(r.data.reminder_days_before)))
+      .catch(() => {});
+  }, []);
+
+  const saveReminderSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReminderMsg('');
+    const days = Number(reminderDays);
+    if (!Number.isInteger(days) || days < 0 || days > 30) {
+      setReminderMsg('Укажите целое число дней от 0 до 30');
+      return;
+    }
+    setReminderSaving(true);
+    try {
+      await api.organization.updateReminderSettings(days);
+      setReminderMsg('Сохранено');
+    } catch (e: any) {
+      setReminderMsg(e.message || 'Не удалось сохранить');
+    } finally {
+      setReminderSaving(false);
+    }
+  };
 
   const onLogoSelected = async (file: File | null) => {
     if (!file) return;
@@ -302,6 +331,26 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">Напоминания об оплате</div>
+        <div className="card-body">
+          <p style={{ fontSize: 13.5, color: 'var(--text2)', marginBottom: 12 }}>
+            За сколько дней до срока оплаты присылать email-напоминание о счетах, которые скоро нужно оплатить.
+          </p>
+          <form onSubmit={saveReminderSettings} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="number" min={0} max={30} style={{ maxWidth: 100 }} disabled={me?.role !== 'owner'}
+              value={reminderDays} onChange={e => setReminderDays(e.target.value)} />
+            <span>дней до срока</span>
+            {me?.role === 'owner' && (
+              <button type="submit" className="btn btn-primary btn-sm" disabled={reminderSaving}>
+                {reminderSaving ? 'Сохраняем…' : 'Сохранить'}
+              </button>
+            )}
+            {reminderMsg && <span style={{ fontSize: 13, color: 'var(--text2)' }}>{reminderMsg}</span>}
+          </form>
+        </div>
       </div>
 
       {me?.role === 'owner' && (
