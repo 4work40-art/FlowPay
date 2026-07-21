@@ -178,6 +178,23 @@ export const api = {
       if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
       return data;
     },
+    // Массовая загрузка отдельных файлов счетов — каждый файл разбирается
+    // как отдельный документ той же логикой, что и recognize() выше
+    // (в отличие от recognizeRegister, где один файл — таблица из многих
+    // счетов). Ничего не сохраняет — черновик для проверки и создания.
+    recognizeBatch: async (files: File[]) => {
+      const token = getStoredToken();
+      const form = new FormData();
+      files.forEach(f => form.append('files', f));
+      const res = await fetch(apiUrl('/documents/recognize-batch'), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message ?? `HTTP ${res.status}`);
+      return data;
+    },
     list: (invoiceId: string) => req(`/invoices/${invoiceId}/documents`),
     upload: async (invoiceId: string, file: File) => {
       const token = getStoredToken();

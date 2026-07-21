@@ -41,6 +41,75 @@ const recognizeUpload = multer({
   },
 });
 
+// Общая логика для одиночного и пакетного распознавания: сам разбор файла
+// плюс подбор кандидатов-счетов для платёжки и проверка "такой счёт/платёж
+// уже есть" — то же самое, что нужно и при загрузке одного файла на форме,
+// и при массовой загрузке нескольких (см. /documents/recognize-batch).
+async function recognizeOne(buffer, filename, mimetype, orgId) {
+  const result = await recognize(buffer, filename, mimetype);
+
+  // Для платёжки/неизвестного документа сразу подбираем счёт-кандидат
+  // по номеру, упомянутому в назначении платежа — той же логикой точного
+  // совпадения токена, что и импорт банковской выписки.
+  let matchedInvoices = [];
+  let duplicate = null;
+  const refNumber = result.fields.referenced_invoice_number;
+  if (refNumber) {
+    const { rows } = await pool.query(
+      `SELECT id, number, amount_kopecks, paid_kopecks, status, counterparty_id
+       FROM invoices WHERE org_id = $1 AND status NOT IN ('DISPUTED','ARCHIVED','WRITTEN_OFF')`,
+      [orgId]
+    );
+    matchedInvoices = rows
+      .filter(inv => inv.number && purposeContainsNumber(refNumber, inv.number))
+      .map(inv => ({ id: inv.id, number: inv.number, remaining_kopecks: Number(inv.amount_kopecks) - Number(inv.paid_kopecks) }));
+  }
+
+  // Платёжное поручение имеет собственный номер — если платёж с таким же
+  // номером, датой и суммой по этому же счёту уже зафиксирован, это
+  // почти наверняка повторная загрузка того же документа. Проверяем
+  // сразу на распознавании, до заполнения формы пользователем.
+  if (result.doc_type === 'payment_order' && result.fields.number && matchedInvoices.length === 1) {
+    const { rows: dupRows } = await pool.query(
+      `SELECT id, invoice_id, payment_date FROM payments
+       WHERE org_id=$1 AND invoice_id=$2 AND reference=$3 AND payment_date=$4 AND amount_kopecks=$5
+       LIMIT 1`,
+      [orgId, matchedInvoices[0].id, result.fields.number, result.fields.payment_date, result.fields.amount_kopecks]
+    );
+    if (dupRows.length) {
+      const dupDate = dupRows[0].payment_date;
+      duplicate = {
+        payment_id: dupRows[0].id, invoice_id: dupRows[0].invoice_id,
+        payment_date: dupDate instanceof Date ? dupDate.toISOString().slice(0, 10) : dupDate,
+      };
+    }
+  }
+
+  // Счёт с таким же номером уже загружался раньше — почти наверняка это
+  // повторная загрузка того же документа. Не создаём дубль: подсказываем,
+  // какой счёт уже есть и каких полей у него не хватает, чтобы форма
+  // могла дозаполнить их вместо создания нового счёта.
+  let existingInvoice = null;
+  if (result.doc_type === 'invoice' && result.fields.number) {
+    const { rows: existingRows } = await pool.query(
+      `SELECT id, number, invoice_date, due_date, notes FROM invoices
+       WHERE org_id=$1 AND lower(trim(number))=lower(trim($2)) LIMIT 1`,
+      [orgId, result.fields.number]
+    );
+    if (existingRows.length) {
+      const existing = existingRows[0];
+      const { rows: itemRows } = await pool.query('SELECT id FROM invoice_items WHERE invoice_id=$1 LIMIT 1', [existing.id]);
+      const missing = [];
+      if (!existing.invoice_date && result.fields.invoice_date) missing.push('invoice_date');
+      if (!existing.due_date && result.fields.due_date) missing.push('due_date');
+      if (!itemRows.length && result.fields.items?.length) missing.push('items');
+      existingInvoice = { id: existing.id, number: existing.number, missing };
+    }
+  }
+
+  return { ...result, matched_invoices: matchedInvoices, duplicate, existing_invoice: existingInvoice };
+}
+
 // Распознавание счёта на оплату / платёжного поручения из файла (PDF с
 // текстовым слоем — напрямую, скан/фото — через OCR, Excel/CSV — как один
 // документ той же логикой). Результат — черновик для проверки на форме
@@ -56,75 +125,70 @@ router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res)
     if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
 
     try {
-      const result = await recognize(req.file.buffer, req.file.originalname, req.file.mimetype);
-
-      // Для платёжки/неизвестного документа сразу подбираем счёт-кандидат
-      // по номеру, упомянутому в назначении платежа — той же логикой точного
-      // совпадения токена, что и импорт банковской выписки.
-      let matchedInvoices = [];
-      let duplicate = null;
-      const refNumber = result.fields.referenced_invoice_number;
-      if (refNumber) {
-        const { rows } = await pool.query(
-          `SELECT id, number, amount_kopecks, paid_kopecks, status, counterparty_id
-           FROM invoices WHERE org_id = $1 AND status NOT IN ('DISPUTED','ARCHIVED','WRITTEN_OFF')`,
-          [req.user.org_id]
-        );
-        matchedInvoices = rows
-          .filter(inv => inv.number && purposeContainsNumber(refNumber, inv.number))
-          .map(inv => ({ id: inv.id, number: inv.number, remaining_kopecks: Number(inv.amount_kopecks) - Number(inv.paid_kopecks) }));
-      }
-
-      // Платёжное поручение имеет собственный номер — если платёж с таким же
-      // номером, датой и суммой по этому же счёту уже зафиксирован, это
-      // почти наверняка повторная загрузка того же документа. Проверяем
-      // сразу на распознавании, до заполнения формы пользователем.
-      if (result.doc_type === 'payment_order' && result.fields.number && matchedInvoices.length === 1) {
-        const { rows: dupRows } = await pool.query(
-          `SELECT id, invoice_id, payment_date FROM payments
-           WHERE org_id=$1 AND invoice_id=$2 AND reference=$3 AND payment_date=$4 AND amount_kopecks=$5
-           LIMIT 1`,
-          [req.user.org_id, matchedInvoices[0].id, result.fields.number, result.fields.payment_date, result.fields.amount_kopecks]
-        );
-        if (dupRows.length) {
-          const dupDate = dupRows[0].payment_date;
-          duplicate = {
-            payment_id: dupRows[0].id, invoice_id: dupRows[0].invoice_id,
-            payment_date: dupDate instanceof Date ? dupDate.toISOString().slice(0, 10) : dupDate,
-          };
-        }
-      }
-
-      // Счёт с таким же номером уже загружался раньше — почти наверняка это
-      // повторная загрузка того же документа. Не создаём дубль: подсказываем,
-      // какой счёт уже есть и каких полей у него не хватает, чтобы форма
-      // могла дозаполнить их вместо создания нового счёта.
-      let existingInvoice = null;
-      if (result.doc_type === 'invoice' && result.fields.number) {
-        const { rows: existingRows } = await pool.query(
-          `SELECT id, number, invoice_date, due_date, notes FROM invoices
-           WHERE org_id=$1 AND lower(trim(number))=lower(trim($2)) LIMIT 1`,
-          [req.user.org_id, result.fields.number]
-        );
-        if (existingRows.length) {
-          const existing = existingRows[0];
-          const { rows: itemRows } = await pool.query('SELECT id FROM invoice_items WHERE invoice_id=$1 LIMIT 1', [existing.id]);
-          const missing = [];
-          if (!existing.invoice_date && result.fields.invoice_date) missing.push('invoice_date');
-          if (!existing.due_date && result.fields.due_date) missing.push('due_date');
-          if (!itemRows.length && result.fields.items?.length) missing.push('items');
-          existingInvoice = { id: existing.id, number: existing.number, missing };
-        }
-      }
+      const combined = await recognizeOne(req.file.buffer, req.file.originalname, req.file.mimetype, req.user.org_id);
 
       await audit(req.user.org_id, req.user.id, 'document.recognized', 'document', null,
-        null, { doc_type: result.doc_type, filename: req.file.originalname, duplicate: !!duplicate, existing_invoice: !!existingInvoice });
+        null, { doc_type: combined.doc_type, filename: req.file.originalname, duplicate: !!combined.duplicate, existing_invoice: !!combined.existing_invoice });
 
-      return ok(res, { ...result, matched_invoices: matchedInvoices, duplicate, existing_invoice: existingInvoice });
+      return ok(res, combined);
     } catch (e) {
       console.error('[document recognize]', e.message);
       return err(res, 502, 'Не удалось распознать документ — попробуйте другой файл или введите данные вручную', 'RECOGNIZE_FAILED');
     }
+  });
+});
+
+// Массовая загрузка отдельных файлов счетов (каждый файл — один счёт, в
+// отличие от «Импорта реестра», где один Excel/CSV содержит таблицу из
+// многих счетов) — каждый файл разбирается той же логикой, что и одиночная
+// загрузка выше (/documents/recognize), включая проверку "такой счёт уже
+// есть". Ничего не сохраняет — черновик для проверки и создания счетов на
+// фронтенде (см. /invoices/import-files).
+const BATCH_MAX_FILES = 20;
+const batchLimiter = rateLimit({
+  keyFn: (req) => `recognize-batch:${req.user?.org_id}`,
+  max: 10, windowSeconds: 60 * 60,
+  message: 'Слишком много запросов на массовое распознавание, попробуйте позже',
+});
+const batchUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: BATCH_MAX_FILES },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extOk = ['.xlsx', '.xls', '.csv'].includes(ext);
+    if (!RECOGNIZE_ALLOWED_MIME.has(file.mimetype) && !extOk)
+      return cb(new Error('UNSUPPORTED_TYPE'));
+    cb(null, true);
+  },
+});
+
+router.post('/documents/recognize-batch', authMiddleware, batchLimiter, (req, res) => {
+  batchUpload.array('files', BATCH_MAX_FILES)(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.message === 'UNSUPPORTED_TYPE'
+        ? 'Разрешены только PDF, JPG, PNG, XLSX, XLS и CSV'
+        : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Каждый файл — не больше 15 МБ'
+        : uploadErr.code === 'LIMIT_FILE_COUNT' ? `Не больше ${BATCH_MAX_FILES} файлов за раз`
+        : 'Не удалось прочитать файлы';
+      return err(res, 400, message, 'VALIDATION_ERROR');
+    }
+    if (!req.files?.length) return err(res, 400, 'Файлы не переданы', 'VALIDATION_ERROR');
+
+    const results = [];
+    for (const file of req.files) {
+      try {
+        const combined = await recognizeOne(file.buffer, file.originalname, file.mimetype, req.user.org_id);
+        results.push({ filename: file.originalname, ...combined });
+      } catch (e) {
+        console.error('[document recognize-batch]', file.originalname, e.message);
+        results.push({ filename: file.originalname, error: 'Не удалось распознать файл' });
+      }
+    }
+
+    await audit(req.user.org_id, req.user.id, 'document.recognized_batch', 'document', null,
+      null, { count: req.files.length, recognized: results.filter(r => !r.error).length });
+
+    return ok(res, { results });
   });
 });
 

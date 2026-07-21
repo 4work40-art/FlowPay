@@ -61,6 +61,7 @@ export default function InvoicesPage() {
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
           <button className="btn btn-sm" onClick={() => setShowExport(v => !v)}>⭳ Экспорт CSV</button>
           <a href="/invoices/import" className="btn btn-sm">📊 Импорт реестра</a>
+          <a href="/invoices/import-files" className="btn btn-sm">📁 Массовая загрузка файлов</a>
           <a href="/invoices/new" className="btn btn-primary">+ Загрузить счёт</a>
           {showExport && (
             <div className="card" style={{ position: 'absolute', top: '110%', right: 0, padding: 14, zIndex: 10, width: 260 }}>
