@@ -3,6 +3,7 @@ const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
+const { validateRequisites, isValidInn } = require('../lib/inn');
 
 const router = express.Router();
 
@@ -123,6 +124,126 @@ router.post('/', authMiddleware, async (req, res) => {
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);
   } catch (e) {
     return dbErr(res, e, '[invoice create]');
+  }
+});
+
+// Пакетное создание счетов из проверенного пользователем черновика (реестр
+// Excel/CSV, см. POST /documents/recognize-register). Частичный успех —
+// нормальный сценарий: одна плохая строка не должна ронять весь пакет,
+// поэтому каждый элемент обрабатывается и проваливается независимо
+// (в отличие от одиночного создания, здесь нет общей транзакции на пакет).
+router.post('/bulk', authMiddleware, async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length)
+    return err(res, 400, 'Передайте непустой массив items', 'VALIDATION_ERROR');
+
+  const orgId = req.user.org_id;
+  const created = [];
+  const failed = [];
+
+  try {
+    const orgRows = await pool.query('SELECT invoice_limit FROM organizations WHERE id=$1', [orgId]);
+    const limit = orgRows.rows[0]?.invoice_limit;
+    let currentCount = null;
+    if (limit != null) {
+      const cnt = await pool.query('SELECT COUNT(*) FROM invoices WHERE org_id=$1', [orgId]);
+      currentCount = +cnt.rows[0].count;
+    }
+
+    // Кэш «ИНН -> counterparty_id» в пределах пакета, чтобы не создавать
+    // одного и того же нового контрагента дважды из-за двух строк реестра.
+    const cpCacheByInn = new Map();
+
+    const client = await pool.connect();
+    try {
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx] || {};
+        const row = item.row ?? idx + 1;
+
+        const amount_kopecks = item.amount_kopecks;
+        if (!Number.isInteger(amount_kopecks) || amount_kopecks <= 0) {
+          failed.push({ row, reason: 'Сумма должна быть целым числом больше нуля (в копейках)' });
+          continue;
+        }
+
+        if (limit != null && currentCount >= limit) {
+          failed.push({ row, reason: `Достигнут лимит счетов на вашем тарифе (${limit})` });
+          continue;
+        }
+
+        // Определяем контрагента: явный id -> поиск по ИНН в организации ->
+        // создание нового по имени/ИНН -> без контрагента.
+        let counterpartyId = null;
+        try {
+          if (item.counterparty_id) {
+            const cp = await client.query('SELECT id FROM counterparties WHERE id=$1 AND org_id=$2',
+              [item.counterparty_id, orgId]);
+            if (!cp.rows.length) {
+              failed.push({ row, reason: 'Контрагент не найден в вашей организации' });
+              continue;
+            }
+            counterpartyId = cp.rows[0].id;
+          } else if (item.counterparty_inn) {
+            const inn = String(item.counterparty_inn).trim();
+            if (cpCacheByInn.has(inn)) {
+              counterpartyId = cpCacheByInn.get(inn);
+            } else {
+              const existing = await client.query(
+                'SELECT id FROM counterparties WHERE org_id=$1 AND inn=$2 LIMIT 1', [orgId, inn]);
+              if (existing.rows.length) {
+                counterpartyId = existing.rows[0].id;
+              } else {
+                const innValid = isValidInn(inn) && !validateRequisites({ inn });
+                const insertInn = innValid ? inn : null;
+                const name = (item.counterparty_name && item.counterparty_name.trim()) || inn;
+                const newCp = await client.query(
+                  `INSERT INTO counterparties(org_id, name, inn, type) VALUES($1,$2,$3,'client') RETURNING id`,
+                  [orgId, name, insertInn]);
+                counterpartyId = newCp.rows[0].id;
+              }
+              cpCacheByInn.set(inn, counterpartyId);
+            }
+          }
+        } catch (e) {
+          failed.push({ row, reason: 'Ошибка при определении контрагента' });
+          continue;
+        }
+
+        let finalNumber = item.number || null;
+        try {
+          await client.query('BEGIN');
+
+          if (!finalNumber) {
+            const seqRows = await client.query(
+              `UPDATE organizations SET next_invoice_seq = next_invoice_seq + 1 WHERE id=$1 RETURNING next_invoice_seq - 1 AS seq`,
+              [orgId]);
+            finalNumber = String(seqRows.rows[0].seq);
+          }
+
+          const { rows } = await client.query(`
+            INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, invoice_date, notes, status, created_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7,'CREATED',$8) RETURNING id, number
+          `, [orgId, counterpartyId, finalNumber, amount_kopecks, item.due_date || null,
+              item.invoice_date || null, item.notes || null, req.user.id]);
+
+          await client.query('COMMIT');
+          if (limit != null) currentCount += 1;
+          created.push({ row, invoice_id: rows[0].id, number: rows[0].number });
+        } catch (e) {
+          await client.query('ROLLBACK').catch(() => {});
+          failed.push({ row, reason: 'Ошибка сохранения счёта' });
+        }
+      }
+    } finally {
+      client.release();
+    }
+
+    await audit(orgId, req.user.id, 'invoice.bulk_created', 'invoice', null,
+      null, { created_count: created.length, failed_count: failed.length, total: items.length });
+
+    return ok(res, { created, failed });
+  } catch (e) {
+    return dbErr(res, e, '[invoice bulk create]');
   }
 });
 

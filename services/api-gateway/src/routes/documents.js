@@ -10,6 +10,7 @@ const { audit } = require('../lib/audit');
 const { UPLOAD_DIR } = require('../lib/storage');
 const { recognize } = require('../lib/documentRecognizer');
 const { purposeContainsNumber } = require('../lib/statementParse');
+const { parseCsvRegister, parseExcelRegister, MAX_ROWS } = require('../lib/registerParse');
 const { rateLimit } = require('../lib/rateLimit');
 
 const router = express.Router();
@@ -68,6 +69,78 @@ router.post('/documents/recognize', authMiddleware, recognizeLimiter, (req, res)
     } catch (e) {
       console.error('[document recognize]', e.message);
       return err(res, 502, 'Не удалось распознать документ — попробуйте другой файл или введите данные вручную', 'RECOGNIZE_FAILED');
+    }
+  });
+});
+
+// Разбор реестра счетов (Excel/CSV — массовая выгрузка из 1С/МойСклад/СБИС).
+// Тяжёлая операция (парсинг таблицы на десятки строк) — лимит частоты
+// строже, чем у одиночного распознавания.
+const registerLimiter = rateLimit({
+  keyFn: (req) => `recognize-register:${req.user?.org_id}`,
+  max: 10, windowSeconds: 60 * 60,
+  message: 'Слишком много запросов на разбор реестра счетов, попробуйте позже',
+});
+const REGISTER_ALLOWED_MIME = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+  'application/csv',
+]);
+const registerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const extOk = ['.xlsx', '.xls', '.csv'].includes(ext);
+    if (!REGISTER_ALLOWED_MIME.has(file.mimetype) && !extOk)
+      return cb(new Error('UNSUPPORTED_TYPE'));
+    cb(null, true);
+  },
+});
+
+// Разбор реестра счетов из Excel/CSV в черновик для проверки пользователем —
+// ничего не создаёт в БД. Формат по расширению файла (mimetype от браузера
+// для .xls/.csv не всегда надёжен).
+router.post('/documents/recognize-register', authMiddleware, registerLimiter, (req, res) => {
+  registerUpload.single('file')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.message === 'UNSUPPORTED_TYPE'
+        ? 'Разрешены только файлы Excel (.xlsx, .xls) или CSV'
+        : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 5 МБ' : 'Не удалось прочитать файл';
+      return err(res, 400, message, 'VALIDATION_ERROR');
+    }
+    if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+
+    const ext = path.extname(req.file.originalname || '').toLowerCase();
+    const isExcel = ext === '.xlsx' || ext === '.xls' ||
+      req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      req.file.mimetype === 'application/vnd.ms-excel';
+
+    try {
+      const items = isExcel
+        ? await parseExcelRegister(req.file.buffer)
+        : parseCsvRegister(req.file.buffer);
+
+      if (!items.length) return err(res, 400, 'Реестр пуст или не содержит распознаваемых строк', 'VALIDATION_ERROR');
+
+      const warningRows = items.filter(i => i.warnings.length > 0).length;
+
+      await audit(req.user.org_id, req.user.id, 'document.register_recognized', 'document', null,
+        null, { filename: req.file.originalname, total_rows: items.length });
+
+      return ok(res, {
+        items,
+        total_rows: items.length,
+        parsed_rows: items.filter(i => i.amount_kopecks !== null).length,
+        warning_rows: warningRows,
+      });
+    } catch (e) {
+      console.error('[register recognize]', e.message);
+      const message = /максимум/.test(e.message)
+        ? e.message
+        : 'Не удалось разобрать файл — проверьте, что это корректный Excel/CSV с реестром счетов';
+      return err(res, 400, message, 'VALIDATION_ERROR');
     }
   });
 });
