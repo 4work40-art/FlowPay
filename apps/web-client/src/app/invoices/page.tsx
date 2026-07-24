@@ -136,17 +136,19 @@ export default function InvoicesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 70 }}>№</th>
-                  <th>Контрагент</th>
-                  <th style={{ width: 150 }}>Сумма</th>
-                  <th style={{ width: 130 }}>Срок оплаты</th>
-                  <th style={{ width: 150 }}>Статус</th>
+                  <th style={{ width: 70 }} scope="col">№</th>
+                  <th scope="col">Контрагент</th>
+                  <th style={{ width: 150 }} scope="col">Сумма</th>
+                  <th style={{ width: 130 }} scope="col">Срок оплаты</th>
+                  <th style={{ width: 150 }} scope="col">Статус</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(inv => (
-                  <tr key={inv.id} className="clickable"
-                    onClick={() => window.location.href = `/invoices/${inv.id}`}>
+                  <tr key={inv.id} className="clickable" tabIndex={0} role="link"
+                    aria-label={`Счёт №${inv.number}, ${inv.counterparty_name || '—'}, ${inv.amount_display}`}
+                    onClick={() => window.location.href = `/invoices/${inv.id}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.location.href = `/invoices/${inv.id}`; } }}>
                     <td className="mono text-muted">#{inv.number}</td>
                     <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
                     <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>

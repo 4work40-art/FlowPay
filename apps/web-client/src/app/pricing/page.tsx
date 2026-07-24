@@ -20,7 +20,7 @@ export default function PublicPricingPage() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1100, margin: '0 auto' }}>
         <Link href="/" style={{ fontSize: 20, fontWeight: 700, color: 'inherit', textDecoration: 'none' }}>📄 Счёт&amp;Контроль</Link>
         <nav style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14 }}>

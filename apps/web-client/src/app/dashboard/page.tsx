@@ -166,11 +166,11 @@ export default function DashboardPage() {
           <table className="table">
             <thead>
               <tr>
-                <th style={{ width: 70 }}>№</th>
-                <th>Контрагент</th>
-                <th style={{ width: 140 }}>Сумма</th>
-                <th style={{ width: 140 }}>Статус</th>
-                <th style={{ width: 220 }}></th>
+                <th style={{ width: 70 }} scope="col">№</th>
+                <th scope="col">Контрагент</th>
+                <th style={{ width: 140 }} scope="col">Сумма</th>
+                <th style={{ width: 140 }} scope="col">Статус</th>
+                <th style={{ width: 220 }} scope="col"></th>
               </tr>
             </thead>
             <tbody>

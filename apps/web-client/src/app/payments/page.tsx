@@ -134,12 +134,12 @@ export default function PaymentsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 110 }}>Дата</th>
-                  <th style={{ width: 80 }}>Счёт</th>
-                  <th>Контрагент</th>
-                  <th style={{ width: 150 }}>Сумма</th>
-                  <th style={{ width: 100 }}>ПП</th>
-                  <th style={{ width: 40 }}></th>
+                  <th style={{ width: 110 }} scope="col">Дата</th>
+                  <th style={{ width: 80 }} scope="col">Счёт</th>
+                  <th scope="col">Контрагент</th>
+                  <th style={{ width: 150 }} scope="col">Сумма</th>
+                  <th style={{ width: 100 }} scope="col">ПП</th>
+                  <th style={{ width: 40 }} scope="col"></th>
                 </tr>
               </thead>
               <tbody>

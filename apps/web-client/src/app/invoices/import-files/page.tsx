@@ -202,8 +202,8 @@ export default function ImportInvoiceFilesPage() {
         <div
           className="card"
           style={{
-            marginBottom: 16, maxWidth: 640, border: dragOver ? '2px dashed var(--accent, #b8860b)' : '2px dashed var(--border, #ddd)',
-            background: dragOver ? 'var(--accent-light, #fdf6e8)' : undefined,
+            marginBottom: 16, maxWidth: 640, border: dragOver ? '2px dashed var(--accent)' : '2px dashed var(--border)',
+            background: dragOver ? 'var(--accent-light)' : undefined,
           }}
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -294,7 +294,7 @@ export default function ImportInvoiceFilesPage() {
                       </select>
                     </td>
                     <td>{r.items.length || '—'}</td>
-                    <td style={{ fontSize: 12, color: r.existingInvoiceId ? 'var(--amber-dark, #a06a00)' : (r.ok ? 'var(--text2)' : 'var(--red)') }}>
+                    <td style={{ fontSize: 12, color: r.existingInvoiceId ? 'var(--amber-dark)' : (r.ok ? 'var(--text2)' : 'var(--red)') }}>
                       {r.status}
                     </td>
                   </tr>

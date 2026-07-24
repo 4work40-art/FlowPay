@@ -116,7 +116,7 @@ export default function NewPaymentPage() {
         </div>
 
         {recognizedNotice && (
-          <div className="error-box" style={{ maxWidth: 480, marginBottom: 16, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+          <div className="error-box" style={{ maxWidth: 480, marginBottom: 16, background: 'var(--blue-light)', color: 'var(--blue-dark)' }}>
             {recognizedNotice}
           </div>
         )}
@@ -225,7 +225,7 @@ export default function NewPaymentPage() {
         <div className="card-body">
           <form onSubmit={submit}>
             {recognizedNotice && (
-              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light)', color: 'var(--blue-dark)' }}>
                 {recognizedNotice}
               </div>
             )}

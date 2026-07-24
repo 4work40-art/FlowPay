@@ -176,7 +176,7 @@ export default function ImportInvoicesPage() {
                     const hasWarnings = r.warnings.length > 0;
                     return (
                       <Fragment key={r.row}>
-                        <tr style={hasWarnings ? { background: 'var(--amber-light, #fdf3e0)' } : undefined}>
+                        <tr style={hasWarnings ? { background: 'var(--amber-light)' } : undefined}>
                           <td>
                             <input type="checkbox" checked={r.include} onChange={e => updateRow(r.row, { include: e.target.checked })} />
                           </td>
@@ -190,9 +190,9 @@ export default function ImportInvoicesPage() {
                           <td><input type="text" value={r.notes} onChange={e => updateRow(r.row, { notes: e.target.value })} style={{ width: 140 }} /></td>
                         </tr>
                         {hasWarnings && (
-                          <tr style={{ background: 'var(--amber-light, #fdf3e0)' }}>
+                          <tr style={{ background: 'var(--amber-light)' }}>
                             <td></td>
-                            <td colSpan={8} style={{ color: '#9a6b00', fontSize: 12, paddingTop: 0 }}>
+                            <td colSpan={8} style={{ color: 'var(--amber-dark)', fontSize: 12, paddingTop: 0 }}>
                               ⚠ {r.warnings.join('; ')}
                             </td>
                           </tr>

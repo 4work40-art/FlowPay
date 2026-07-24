@@ -16,7 +16,7 @@ export default function LandingPage() {
   if (!checked) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
         <nav style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14 }}>

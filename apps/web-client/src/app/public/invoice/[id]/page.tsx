@@ -21,7 +21,7 @@ export default function PublicInvoicePage() {
   }, [id]);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div className="card" style={{ width: 420, padding: 28 }}>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 4 }}>📄 Счёт&amp;Контроль</div>
 

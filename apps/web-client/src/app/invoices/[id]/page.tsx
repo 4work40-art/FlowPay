@@ -212,10 +212,10 @@ export default function InvoiceDetailPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Файл</th>
-                <th>Размер</th>
-                <th>Загружен</th>
-                <th></th>
+                <th scope="col">Файл</th>
+                <th scope="col">Размер</th>
+                <th scope="col">Загружен</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody>
@@ -251,11 +251,11 @@ export default function InvoiceDetailPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Дата</th>
-                <th>Сумма</th>
-                <th>Способ</th>
-                <th>Референс</th>
-                <th></th>
+                <th scope="col">Дата</th>
+                <th scope="col">Сумма</th>
+                <th scope="col">Способ</th>
+                <th scope="col">Референс</th>
+                <th scope="col"></th>
               </tr>
             </thead>
             <tbody>
@@ -378,7 +378,7 @@ function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: 
       <div className="table-wrap">
         <table className="table">
           <thead>
-            <tr><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Цена</th><th>Сумма</th><th></th></tr>
+            <tr><th scope="col">Наименование</th><th scope="col">Кол-во</th><th scope="col">Ед.</th><th scope="col">Цена</th><th scope="col">Сумма</th><th scope="col"></th></tr>
           </thead>
           <tbody>
             {items.map(it => (

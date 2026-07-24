@@ -275,11 +275,11 @@ export default function SettingsPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Имя</th>
-                <th>Email</th>
-                <th>Роль</th>
-                <th>Последний вход</th>
-                <th>Статус</th>
+                <th scope="col">Имя</th>
+                <th scope="col">Email</th>
+                <th scope="col">Роль</th>
+                <th scope="col">Последний вход</th>
+                <th scope="col">Статус</th>
               </tr>
             </thead>
             <tbody>

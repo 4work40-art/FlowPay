@@ -158,11 +158,11 @@ export default function CounterpartiesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Название</th>
-                  <th>ИНН</th>
-                  <th>Тип</th>
-                  <th>Счетов</th>
-                  <th>Долг</th>
+                  <th scope="col">Название</th>
+                  <th scope="col">ИНН</th>
+                  <th scope="col">Тип</th>
+                  <th scope="col">Счетов</th>
+                  <th scope="col">Долг</th>
                 </tr>
               </thead>
               <tbody>

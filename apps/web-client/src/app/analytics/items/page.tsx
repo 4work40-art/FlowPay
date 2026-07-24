@@ -86,7 +86,7 @@ export default function ItemsAnalyticsPage() {
               <tbody>
                 {items.map(it => (
                   <tr key={it.name} onClick={() => setSelected(it.name)}
-                    style={{ cursor: 'pointer', background: selected === it.name ? 'var(--card-bg2, #f7f5ef)' : undefined }}>
+                    style={{ cursor: 'pointer', background: selected === it.name ? 'var(--card-bg2)' : undefined }}>
                     <td>{it.name}</td>
                     <td>{it.total_quantity}</td>
                     <td>{it.total_display}</td>

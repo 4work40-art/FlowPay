@@ -35,8 +35,8 @@ export default function RegisterDropzone({ onRecognized }: { onRecognized: (r: R
     <div
       className="card"
       style={{
-        marginBottom: 16, border: dragOver ? '2px dashed var(--accent, #b8860b)' : '2px dashed var(--border, #ddd)',
-        background: dragOver ? 'var(--accent-light, #fdf6e8)' : undefined,
+        marginBottom: 16, border: dragOver ? '2px dashed var(--accent)' : '2px dashed var(--border)',
+        background: dragOver ? 'var(--accent-light)' : undefined,
       }}
       onDragOver={e => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}

@@ -173,7 +173,7 @@ export default function NewInvoicePage() {
         <div className="card-body">
           <form onSubmit={submit}>
             {existingInvoice && (
-              <div className="error-box" style={{ marginBottom: 14, background: 'var(--amber-light, #fdf1de)', color: 'var(--amber-dark, #a06a00)' }}>
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--amber-light)', color: 'var(--amber-dark)' }}>
                 Счёт №{existingInvoice.number} уже есть в системе — новый счёт создан не будет.
                 {existingInvoice.missing.length > 0
                   ? ' Дозаполним недостающие поля из этого файла и откроем существующий счёт.'
@@ -182,12 +182,12 @@ export default function NewInvoicePage() {
               </div>
             )}
             {recognizedNotice && (
-              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)' }}>
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--blue-light)', color: 'var(--blue-dark)' }}>
                 {recognizedNotice}
               </div>
             )}
             {counterpartyNotice && (
-              <div className="error-box" style={{ marginBottom: 14, background: 'var(--green-light, #e8f5ee)', color: 'var(--green-dark, #1a7a4c)' }}>
+              <div className="error-box" style={{ marginBottom: 14, background: 'var(--green-light)', color: 'var(--green-dark)' }}>
                 {counterpartyNotice}
               </div>
             )}
@@ -258,7 +258,7 @@ export default function NewInvoicePage() {
                 <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text2)' }}>
                   Сумма по позициям: {itemsTotal.toLocaleString('ru-RU')} ₽
                   {Math.round(itemsTotal * 100) !== Math.round(Number(amount.replace(',', '.') || '0') * 100) && amount && (
-                    <span style={{ color: 'var(--amber-dark, #a06a00)' }}> — не совпадает с суммой счёта выше, это нормально, если счёт включает не только перечисленные позиции</span>
+                    <span style={{ color: 'var(--amber-dark)' }}> — не совпадает с суммой счёта выше, это нормально, если счёт включает не только перечисленные позиции</span>
                   )}
                 </div>
               )}

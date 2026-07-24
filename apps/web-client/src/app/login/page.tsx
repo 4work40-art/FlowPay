@@ -33,7 +33,7 @@ export default function LoginPage() {
       <form onSubmit={submit} className="card blueprint fp-panel">
         <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
 
-        <div className="fp-brand">
+        <div className="fp-brand-block">
           <div className="fp-brand-mark">+</div>
           <div className="fp-brand-title">Счёт&amp;Контроль</div>
           <div className="fp-brand-sub">Вход в систему</div>

@@ -184,7 +184,7 @@ export default function AnalyticsPage() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>#</th><th>Название</th><th>ИНН</th><th>Сумма закупок</th><th>Доля</th><th>Группа</th></tr>
+                <tr><th scope="col">#</th><th scope="col">Название</th><th scope="col">ИНН</th><th scope="col">Сумма закупок</th><th scope="col">Доля</th><th scope="col">Группа</th></tr>
               </thead>
               <tbody>
                 {rating.map((r, i) => (
@@ -219,11 +219,11 @@ export default function AnalyticsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Наименование</th>
-                  <th>Куплено, шт.</th>
-                  <th>Сумма закупок</th>
-                  <th>Средняя цена/шт.</th>
-                  <th>Последняя закупка</th>
+                  <th scope="col">Наименование</th>
+                  <th scope="col">Куплено, шт.</th>
+                  <th scope="col">Сумма закупок</th>
+                  <th scope="col">Средняя цена/шт.</th>
+                  <th scope="col">Последняя закупка</th>
                 </tr>
               </thead>
               <tbody>
