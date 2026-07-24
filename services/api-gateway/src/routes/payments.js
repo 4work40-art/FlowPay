@@ -139,4 +139,62 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+const NON_DELETABLE_STATUSES = ['ARCHIVED', 'WRITTEN_OFF'];
+
+// Удаление ошибочно занесённого платежа (например, автоматическое
+// разнесение выписки привязало не тот платёж к счёту). Пересчитываем
+// paid_kopecks и статус счёта так, как будто этого платежа никогда не было.
+router.delete('/:id', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const payRows = await client.query('SELECT * FROM payments WHERE id=$1 AND org_id=$2', [req.params.id, req.user.org_id]);
+    if (!payRows.rows.length) {
+      await client.query('ROLLBACK');
+      return err(res, 404, 'Платёж не найден', 'NOT_FOUND');
+    }
+    const payment = payRows.rows[0];
+
+    const invRows = await client.query('SELECT * FROM invoices WHERE id=$1 FOR UPDATE', [payment.invoice_id]);
+    const inv = invRows.rows[0];
+    if (!inv) {
+      await client.query('ROLLBACK');
+      return err(res, 404, 'Счёт не найден', 'NOT_FOUND');
+    }
+    if (NON_DELETABLE_STATUSES.includes(inv.status)) {
+      await client.query('ROLLBACK');
+      return err(res, 400, `Счёт в статусе ${inv.status} — платежи по нему изменить нельзя`, 'INVOICE_STATE_INVALID');
+    }
+
+    await client.query('DELETE FROM payments WHERE id=$1', [payment.id]);
+
+    const amountKopecks = Number(payment.amount_kopecks);
+    const amountTotal   = Number(inv.amount_kopecks);
+    const newPaid = Math.max(0, Number(inv.paid_kopecks) - amountKopecks);
+    // Статус счёта без этого платежа: если что-то ещё оплачено — частичная
+    // оплата; если ничего — счёт возвращается «в работу», просроченным,
+    // если срок оплаты уже прошёл (та же граница, что и у overdueJob).
+    const newStatus = newPaid > 0
+      ? 'PARTIALLY_PAID'
+      : (inv.due_date && new Date(inv.due_date) < new Date() ? 'OVERDUE' : 'UNDER_CONTROL');
+
+    await client.query('UPDATE invoices SET paid_kopecks=$1, status=$2, updated_at=NOW() WHERE id=$3',
+      [newPaid, newStatus, inv.id]);
+
+    await client.query('COMMIT');
+
+    await audit(req.user.org_id, req.user.id, 'payment.deleted', 'payment', payment.id,
+      { amount_kopecks: amountKopecks, invoice_id: inv.id },
+      { invoice_paid_kopecks: newPaid, invoice_status: newStatus });
+
+    return ok(res, { deleted: true, invoice_id: inv.id, invoice_status: newStatus, remaining_display: fmt(amountTotal - newPaid) });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    return dbErr(res, e, '[payment delete]');
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

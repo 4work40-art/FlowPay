@@ -130,6 +130,7 @@ export default function PaymentsPage() {
                   <th>Контрагент</th>
                   <th style={{ width: 150 }}>Сумма</th>
                   <th style={{ width: 100 }}>ПП</th>
+                  <th style={{ width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -140,10 +141,26 @@ export default function PaymentsPage() {
                     <td style={{ fontWeight: 500 }}>{p.counterparty_name || '—'}</td>
                     <td style={{ fontWeight: 600, color: '#085041' }}>{p.amount_display}</td>
                     <td style={{ color: '#888', fontSize: 12 }}>{p.reference || '—'}</td>
+                    <td>
+                      <button
+                        type="button" className="btn btn-sm" title="Удалить платёж (например, если разнесён по ошибке)"
+                        onClick={async () => {
+                          if (!confirm(`Удалить платёж на ${p.amount_display} по счёту #${p.invoice_number}? Сумма и статус счёта будут пересчитаны.`)) return;
+                          try {
+                            await api.payments.delete(p.id);
+                            load();
+                          } catch (e: any) {
+                            alert(e.message || 'Не удалось удалить платёж');
+                          }
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {!payments.length && (
-                  <tr><td colSpan={5} className="empty-state">
+                  <tr><td colSpan={6} className="empty-state">
                     Платежей пока нет. Записать платёж можно со страницы конкретного счёта.
                   </td></tr>
                 )}

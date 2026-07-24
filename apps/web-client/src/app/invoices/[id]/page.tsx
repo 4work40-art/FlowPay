@@ -244,8 +244,22 @@ export default function InvoiceDetailPage() {
                   <td style={{ fontWeight: 600 }}>{p.amount_display}</td>
                   <td>{METHOD_LABEL[p.method] ?? p.method}</td>
                   <td style={{ color: 'var(--text2)' }}>{p.reference ?? '—'}</td>
-                  <td>
+                  <td style={{ display: 'flex', gap: 6 }}>
                     <a className="btn btn-sm" href={`/invoices/${id}/receipt?payment=${p.id}`} target="_blank" rel="noreferrer">Акт</a>
+                    <button
+                      type="button" className="btn btn-sm" title="Удалить платёж (например, если разнесён по ошибке)"
+                      onClick={async () => {
+                        if (!confirm(`Удалить платёж на ${p.amount_display} от ${new Date(p.payment_date).toLocaleDateString('ru-RU')}? Сумма и статус счёта будут пересчитаны.`)) return;
+                        try {
+                          await api.payments.delete(p.id);
+                          load();
+                        } catch (e: any) {
+                          alert(e.message || 'Не удалось удалить платёж');
+                        }
+                      }}
+                    >
+                      ✕
+                    </button>
                   </td>
                 </tr>
               ))}

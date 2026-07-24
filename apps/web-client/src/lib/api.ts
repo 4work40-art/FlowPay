@@ -237,6 +237,7 @@ export const api = {
       payment_date?: string;
       force?: boolean;
     }) => req('/payments', { method:'POST', body:JSON.stringify(body) }),
+    delete: (id: string) => req(`/payments/${id}`, { method: 'DELETE' }),
     importBankStatement: async (file: File) => {
       const token = getStoredToken();
       const form = new FormData();
