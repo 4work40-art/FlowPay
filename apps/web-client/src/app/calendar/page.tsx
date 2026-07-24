@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON } from '@/lib/api';
+import { api, STATUS_LABEL } from '@/lib/api';
 
 type Invoice = {
   id: string; number: string | null; counterparty_name: string | null;
@@ -29,14 +29,9 @@ function buildGrid(year: number, month: number): (Date | null)[][] {
   return weeks;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  OVERDUE: 'var(--red, #c0392b)',
-  DISPUTED: 'var(--red, #c0392b)',
-  PAYMENT_PENDING: 'var(--amber-dark, #a06a00)',
-  UNDER_CONTROL: 'var(--blue-dark, #1a5fb4)',
-  PARTIALLY_PAID: 'var(--amber-dark, #a06a00)',
-  PAID: 'var(--green-dark, #1a7a4c)',
-};
+function Corners() {
+  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
+}
 
 export default function CalendarPage() {
   const now = new Date();
@@ -81,53 +76,46 @@ export default function CalendarPage() {
     <div>
       <div className="page-header">
         <div>
-          <div className="page-title">Календарь оплат</div>
+          <h1 className="page-title">Календарь оплат</h1>
           <div className="page-sub">Счета по сроку оплаты — ничего не пропустите</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-sm" onClick={() => changeMonth(-1)}>← Пред.</button>
-          <div style={{ fontWeight: 600, minWidth: 160, textAlign: 'center' }}>{MONTH_NAMES[month]} {year}</div>
-          <button className="btn btn-sm" onClick={() => changeMonth(1)}>След. →</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(-1)}>← Пред.</button>
+          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 15, textTransform: 'uppercase', minWidth: 170, textAlign: 'center' }}>{MONTH_NAMES[month]} {year}</div>
+          <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(1)}>След. →</button>
         </div>
       </div>
 
       {loading ? (
-        <div className="loading">⏳ Загрузка...</div>
+        <div className="loading">Загрузка...</div>
       ) : error ? (
         <div className="error-box"><strong>Ошибка:</strong> {error}</div>
       ) : (
-        <div className="card">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
-            {WEEKDAYS.map(w => (
-              <div key={w} style={{ padding: '8px 6px', fontSize: 12.5, fontWeight: 600, color: 'var(--text2)', textAlign: 'center' }}>{w}</div>
-            ))}
+        <div className="card blueprint" style={{ position: 'relative', padding: 0 }}>
+          <Corners />
+          <div className="cal-weekdays">
+            {WEEKDAYS.map(w => <div key={w}>{w}</div>)}
           </div>
           {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
+            <div className="cal-week" key={wi}>
               {week.map((day, di) => {
                 const key = day ? ymd(day) : '';
                 const dayInvoices = day ? (byDay.get(key) ?? []) : [];
                 const isToday = key === todayKey;
                 return (
-                  <div key={di} style={{
-                    minHeight: 96, padding: 6, borderRight: di < 6 ? '1px solid var(--border)' : undefined,
-                    background: isToday ? 'var(--gold-light, #F1E2C2)' : undefined, opacity: day ? 1 : 0.4,
-                  }}>
+                  <div key={di} className={`cal-day${isToday ? ' today' : ''}${!day ? ' dim' : ''}`}>
                     {day && (
                       <>
-                        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4 }}>{day.getDate()}</div>
+                        <div className="cal-daynum">{day.getDate()}</div>
                         {dayInvoices.slice(0, 4).map(inv => (
-                          <a key={inv.id} href={`/invoices/${inv.id}`} title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display}`}
-                            style={{
-                              display: 'block', fontSize: 11, marginBottom: 3, padding: '2px 4px', borderRadius: 4,
-                              background: 'var(--card-bg2, #f7f5ef)', color: STATUS_COLOR[inv.status] ?? 'inherit',
-                              textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                            {STATUS_ICON[inv.status] ?? ''} №{inv.number ?? '—'} · {inv.amount_display}
+                          <a key={inv.id} href={`/invoices/${inv.id}`}
+                            className={`cal-chip${inv.status === 'OVERDUE' || inv.status === 'DISPUTED' ? ' overdue' : ''}`}
+                            title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display} · ${STATUS_LABEL[inv.status] ?? inv.status}`}>
+                            №{inv.number ?? '—'} · {inv.amount_display}
                           </a>
                         ))}
                         {dayInvoices.length > 4 && (
-                          <div style={{ fontSize: 11, color: 'var(--text2)' }}>+{dayInvoices.length - 4} ещё</div>
+                          <div style={{ fontSize: 11, color: 'var(--color-neutral-700)' }}>+{dayInvoices.length - 4} ещё</div>
                         )}
                       </>
                     )}

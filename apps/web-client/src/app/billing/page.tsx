@@ -12,6 +12,10 @@ function priceLabel(p: Plan) {
   return `${(p.price_kopecks / 100).toLocaleString('ru-RU')} ₽/мес`;
 }
 
+function Corners() {
+  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
+}
+
 export default function BillingPage() {
   const [plans, setPlans] = useState<Plans | null>(null);
   const [purchasable, setPurchasable] = useState<string[]>([]);
@@ -59,69 +63,56 @@ export default function BillingPage() {
     }
   };
 
-  if (loading) return <div className="loading">⏳ Загрузка...</div>;
+  if (loading) return <div className="loading">Загрузка...</div>;
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-title">Тариф и биллинг</div>
-      </div>
+      <h1 className="page-title" style={{ marginBottom: 20 }}>Тариф и биллинг</h1>
 
       {sub && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div className="card-header">Текущая подписка</div>
-          <div className="card-body">
-            <div style={{ marginBottom: 6 }}>
-              <span className="field-label">Тариф: </span>
-              <strong>{PLAN_LABEL[sub.plan] ?? sub.plan}</strong>
-            </div>
-            <div style={{ marginBottom: 6 }}>
-              <span className="field-label">Лимит счетов: </span>
-              <strong>{sub.invoice_limit ?? 'без ограничений'}</strong>
-            </div>
-            {sub.current_period_end && (
-              <div style={{ marginBottom: 10 }}>
-                <span className="field-label">Действует до: </span>
-                <strong>{new Date(sub.current_period_end).toLocaleDateString('ru-RU')}</strong>
-              </div>
-            )}
-            {cancelError && <div className="error-box" style={{ marginBottom: 10 }}>{cancelError}</div>}
-            {sub.plan !== 'free' && me?.role === 'owner' && (
-              <button className="btn btn-sm" disabled={canceling} onClick={cancelSubscription}>
-                {canceling ? 'Отменяем…' : 'Вернуться на бесплатный тариф'}
-              </button>
-            )}
-          </div>
+        <div className="card blueprint" style={{ position: 'relative', marginBottom: 20, maxWidth: 420, padding: 20 }}>
+          <Corners />
+          <div style={{ fontSize: 11, color: 'var(--color-neutral-700)', textTransform: 'uppercase', marginBottom: 8 }}>Текущая подписка</div>
+          <div style={{ marginBottom: 6 }}><span style={{ color: 'var(--color-neutral-700)', fontSize: 13 }}>Тариф: </span><strong>{PLAN_LABEL[sub.plan] ?? sub.plan}</strong></div>
+          <div style={{ marginBottom: 6 }}><span style={{ color: 'var(--color-neutral-700)', fontSize: 13 }}>Лимит счетов: </span><strong>{sub.invoice_limit ?? 'без ограничений'}</strong></div>
+          {sub.current_period_end && (
+            <div style={{ marginBottom: 14 }}><span style={{ color: 'var(--color-neutral-700)', fontSize: 13 }}>Действует до: </span><strong>{new Date(sub.current_period_end).toLocaleDateString('ru-RU')}</strong></div>
+          )}
+          {cancelError && <div className="error-box" style={{ marginBottom: 10 }}>{cancelError}</div>}
+          {sub.plan !== 'free' && me?.role === 'owner' && (
+            <button className="btn btn-ghost btn-sm" disabled={canceling} onClick={cancelSubscription}>
+              {canceling ? 'Отменяем…' : 'Вернуться на бесплатный тариф'}
+            </button>
+          )}
         </div>
       )}
 
       {checkoutError && <div className="error-box" style={{ marginBottom: 16 }}>{checkoutError}</div>}
 
-      <div className="grid-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
         {plans && Object.entries(plans).map(([key, p]) => {
           const isCurrent = sub?.plan === key;
           const canBuy = purchasable.includes(key) && me?.role === 'owner';
           return (
-            <div key={key} className="card">
-              <div className="card-header">{p.label}</div>
-              <div className="card-body">
-                <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{priceLabel(p)}</div>
-                <div className="field-hint" style={{ marginBottom: 16 }}>
-                  {p.invoice_limit === null ? 'Без ограничений по счетам' : `До ${p.invoice_limit} счетов`}
-                </div>
-
-                {isCurrent ? (
-                  <span className="status-badge status-PAID">Текущий тариф</span>
-                ) : canBuy ? (
-                  <button className="btn btn-primary btn-sm" disabled={checkoutPlan === key} onClick={() => buy(key)}>
-                    {checkoutPlan === key ? 'Переходим к оплате…' : 'Оформить'}
-                  </button>
-                ) : purchasable.includes(key) ? (
-                  <span className="field-hint">Доступно только владельцу организации</span>
-                ) : (
-                  <span className="field-hint">Свяжитесь с нами для подключения</span>
-                )}
+            <div key={key} className="card blueprint" style={{ position: 'relative', padding: 20 }}>
+              <Corners />
+              <div className="card-kicker">{p.label}</div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 26, fontWeight: 600, marginBottom: 6 }}>{priceLabel(p)}</div>
+              <div className="field-hint" style={{ marginBottom: 16 }}>
+                {p.invoice_limit === null ? 'Без ограничений по счетам' : `До ${p.invoice_limit} счетов`}
               </div>
+
+              {isCurrent ? (
+                <span className="tag tag-accent">Текущий тариф</span>
+              ) : canBuy ? (
+                <button className="btn btn-secondary blueprint btn-sm" disabled={checkoutPlan === key} onClick={() => buy(key)}>
+                  <Corners />{checkoutPlan === key ? 'Переходим к оплате…' : 'Оформить'}
+                </button>
+              ) : purchasable.includes(key) ? (
+                <span className="field-hint">Доступно только владельцу организации</span>
+              ) : (
+                <span className="field-hint">Свяжитесь с нами для подключения</span>
+              )}
             </div>
           );
         })}

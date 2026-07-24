@@ -1,6 +1,10 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL, STATUS_ICON, ROLE_LABEL, PLAN_LABEL, formatDateOnly } from '@/lib/api';
+import {
+  Wallet, ArrowUp, Clock, CalendarDays, ShieldCheck, RefreshCw,
+  ChevronRight, Plus, FileCheck, UserPlus, UserCog,
+} from 'lucide-react';
+import { api, STATUS_LABEL, ROLE_LABEL, PLAN_LABEL, formatDateOnly } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 
 type Invoice = {
@@ -17,12 +21,23 @@ type Invoice = {
   due_date: string;
 };
 
+function Corners() {
+  return (
+    <>
+      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+    </>
+  );
+}
+
+function tagClass(status: string) {
+  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
+  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
+  return 'tag tag-neutral';
+}
+
 export default function DashboardPage() {
   const [summary,  setSummary]  = useState<any>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [mode,     setMode]     = useState<'quick' | 'detail'>('quick');
-  const [filter,   setFilter]   = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
   const [acting,   setActing]   = useState<string | null>(null);
@@ -56,12 +71,8 @@ export default function DashboardPage() {
     }
   };
 
-  const displayed = filter
-    ? invoices.filter(i => i.status === filter)
-    : invoices;
-
   if (loading) {
-    return <div className="loading">⏳ Загрузка данных...</div>;
+    return <div className="loading">Загрузка данных...</div>;
   }
 
   if (error) {
@@ -75,7 +86,7 @@ export default function DashboardPage() {
           </span>
           <br />
           <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={load}>
-            ↺ Повторить
+            <RefreshCw size={14} strokeWidth={1.5} /> Повторить
           </button>
         </div>
       </div>
@@ -84,320 +95,148 @@ export default function DashboardPage() {
 
   const user = getStoredUser();
 
+  // "Требуют действия" — action-needed invoices, not the full list
+  const actionable = invoices.filter(i => i.status !== 'PAID' && i.status !== 'ARCHIVED' && i.status !== 'WRITTEN_OFF');
+
   return (
     <div>
-      {/* ─── Заголовок ───────────────────── */}
       <div className="page-header">
         <div>
-          <div className="page-title">Дашборд</div>
-          <div className="page-sub">{user?.org_name ?? '—'} · {ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="view-toggle">
-            <button
-              className={`view-toggle-btn${mode === 'quick' ? ' active' : ''}`}
-              onClick={() => setMode('quick')}>
-              Быстрый вид
-            </button>
-            <button
-              className={`view-toggle-btn${mode === 'detail' ? ' active' : ''}`}
-              onClick={() => setMode('detail')}>
-              Детальный
-            </button>
+          <h1 className="page-title">Дашборд</h1>
+          <div className="page-sub">
+            {user?.org_name ?? '—'} · {ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}
           </div>
-          <button className="btn btn-sm" onClick={load}>↺</button>
+        </div>
+        <button type="button" className="btn btn-ghost btn-icon" title="Обновить" aria-label="Обновить" onClick={load}>
+          <RefreshCw size={15} strokeWidth={1.5} />
+        </button>
+      </div>
+
+      <div className="grid-2" style={{ gridTemplateColumns: '1.3fr 1fr', marginBottom: 20 }}>
+        <div className="card blueprint" style={{ padding: 28, position: 'relative' }}>
+          <Corners />
+          <div style={{ fontSize: 12, color: 'var(--color-neutral-700)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Wallet size={15} strokeWidth={1.5} /> Всего задолженности
+          </div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 56, fontWeight: 600, color: 'var(--color-accent-700)', lineHeight: 1 }}>
+            {summary?.total_debt?.display ?? '—'}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--color-neutral-700)', marginTop: 8 }}>
+            {summary?.total_invoices ?? 0} счетов в системе
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <a href="/invoices/new" className="btn btn-primary blueprint">
+              <Corners />
+              <ArrowUp size={15} strokeWidth={1.5} /> Загрузить новый счёт
+            </a>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="card blueprint" style={{ padding: '16px 18px', position: 'relative' }}>
+            <Corners />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div>
+                <div className="alert-title"><Clock size={13} strokeWidth={1.5} /> Просроченные</div>
+                <div className="alert-value">{summary?.overdue_debt?.display ?? '—'}</div>
+              </div>
+              <span className="tag tag-accent" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{summary?.overdue_debt?.count ?? 0} счетов</span>
+            </div>
+          </div>
+          <div className="card blueprint" style={{ padding: '16px 18px', position: 'relative' }}>
+            <Corners />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div>
+                <div className="alert-title"><CalendarDays size={13} strokeWidth={1.5} /> На оплату (7 дней)</div>
+                <div className="alert-value">{summary?.due_7_days?.display ?? '—'}</div>
+              </div>
+              <span className="tag tag-outline" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{summary?.due_7_days?.count ?? 0} счёта</span>
+            </div>
+          </div>
+          <div className="card blueprint trust-card" style={{ marginBottom: 0 }}>
+            <Corners />
+            <div>
+              <div className="trust-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ShieldCheck size={13} strokeWidth={1.5} /> Trust Score
+              </div>
+              <div className="trust-bar-wrap"><div className="trust-bar-fill" style={{ width: `${summary?.trust_score ?? 50}%` }} /></div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 28, fontWeight: 600, color: 'var(--color-accent-700)' }}>
+              {summary?.trust_score ?? 50}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-title">Требуют действия</div>
+      <div className="card blueprint" style={{ position: 'relative', padding: 0 }}>
+        <Corners />
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width: 80 }}>№</th>
+                <th>Контрагент</th>
+                <th style={{ width: 130 }}>Сумма</th>
+                <th style={{ width: 160 }}>Статус</th>
+                <th style={{ width: 170 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {actionable.map(inv => (
+                <tr key={inv.id}>
+                  <td className="mono">#{inv.number}</td>
+                  <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
+                  <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
+                  <td><span className={tagClass(inv.status)}>{STATUS_LABEL[inv.status] ?? inv.status}</span></td>
+                  <td style={{ display: 'flex', gap: 6 }}>
+                    <a href={`/invoices/${inv.id}`} className="btn btn-ghost btn-icon" title="Подробнее">
+                      <ChevronRight size={15} strokeWidth={1.5} />
+                    </a>
+                    {inv.status !== 'CREATED' && (
+                      <a href={`/payments/new?invoice=${inv.id}`} className="btn btn-secondary blueprint" style={{ padding: '5px 10px', fontSize: 12 }}>
+                        <Corners /><Plus size={13} strokeWidth={1.5} /> Платёж
+                      </a>
+                    )}
+                    {inv.status === 'CREATED' && (
+                      <button
+                        className="btn btn-secondary blueprint"
+                        style={{ padding: '5px 10px', fontSize: 12 }}
+                        disabled={acting === inv.id}
+                        onClick={() => doTransition(inv.id, 'mark_for_control')}>
+                        <Corners /> На контроль
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!actionable.length && (
+                <tr><td colSpan={5} className="empty-state">Нет счетов, требующих действия.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="table-footer">
+          <span>{actionable.length} из {invoices.length} счетов</span>
+          <a href="/invoices">Все счета <ChevronRight size={12} strokeWidth={1.5} style={{ display: 'inline' }} /></a>
         </div>
       </div>
 
       {summary?.total_invoices === 0 && (
-        <div className="card" style={{ marginBottom: 16, padding: 20, background: 'var(--gold-light, #F1E2C2)' }}>
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>👋 Первые шаги в Счёт&amp;Контроль</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
-            <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>☐</span> Загрузить первый счёт
-            </a>
-            <a href="/counterparties" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>☐</span> Добавить контрагента
-            </a>
-            <a href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>☐</span> Пригласить коллегу (бухгалтера или ассистента)
-            </a>
-          </div>
-        </div>
-      )}
-
-      {mode === 'quick' ? (
         <>
-          {/* ─── Quick View ─────────────────── */}
-          <div className="grid-2" style={{ marginBottom: 16 }}>
-
-            {/* Главная карточка долга + CTA */}
-            <div className="debt-card">
-              <div className="debt-label">🏦 Всего задолженности</div>
-              <div className="debt-value">{summary?.total_debt?.display ?? '—'}</div>
-              <div className="debt-sub">{summary?.total_invoices ?? 0} счетов в системе</div>
-              <a href="/invoices/new" className="btn-cta">
-                ↑ Загрузить новый счёт
+          <div className="section-title">Первые шаги</div>
+          <div className="card blueprint" style={{ position: 'relative', padding: '16px 20px', maxWidth: 420 }}>
+            <Corners />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+              <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>
+                <FileCheck size={15} strokeWidth={1.5} /> Загрузить первый счёт
               </a>
-            </div>
-
-            {/* Два алерта */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* P5: ОРАНЖЕВЫЙ для просрочки */}
-              <div className="alert-card amber" role="alert">
-                <div className="alert-title">⏰ Просроченные</div>
-                <div className="alert-value">{summary?.overdue_debt?.display ?? '—'}</div>
-                <div className="alert-sub">{summary?.overdue_debt?.count ?? 0} счетов · требуют внимания</div>
-              </div>
-              <div className="alert-card blue">
-                <div className="alert-title">📅 На оплату (7 дней)</div>
-                <div className="alert-value">{summary?.due_7_days?.display ?? '—'}</div>
-                <div className="alert-sub">{summary?.due_7_days?.count ?? 0} счетов · срок истекает</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Trust Score */}
-          <div
-            className="trust-card"
-            aria-label={`Trust Score ${summary?.trust_score ?? 50} из 100`}>
-            <div className="trust-info">
-              <div className="trust-label">🛡 Статус доверия</div>
-              <div className="trust-bar-wrap">
-                <div
-                  className="trust-bar-fill"
-                  style={{ width: `${summary?.trust_score ?? 50}%` }}
-                />
-              </div>
-              <div className="trust-sub">Надёжный партнёр · Топ 25% платформы</div>
-            </div>
-            <div className="gauge-wrap">
-              <div className="gauge">
-                <div className="gauge-track" />
-                <div className="gauge-fill" style={{ ['--gauge-deg' as any]: `${(summary?.trust_score ?? 50) * 1.8}deg` }} />
-                <div className="gauge-mask" />
-                <div className="gauge-needle" style={{ ['--gauge-rot' as any]: `${(summary?.trust_score ?? 50) * 1.8 - 90}deg` }} />
-              </div>
-              <div>
-                <div className="trust-score">{summary?.trust_score ?? 50}</div>
-                <div className="trust-score-sub">из 100</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Таблица счетов P2: 4 колонки + expand + фильтры */}
-          <div className="card">
-            <div className="card-header">
-              <span>Последние счета</span>
-              <div className="filter-row" style={{ margin: 0 }}>
-                {[
-                  ['', 'Все'],
-                  ['OVERDUE', '⏰ Просрочены'],
-                  ['PARTIALLY_PAID', '% Частично'],
-                  ['UNDER_CONTROL', '👁 На контроле'],
-                  ['PAID', '✓ Оплачены'],
-                ].map(([v, l]) => (
-                  <button
-                    key={v}
-                    className={`filter-pill${filter === v ? ' active' : ''}`}
-                    onClick={() => setFilter(v)}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 70 }}>№</th>
-                    <th>Контрагент</th>
-                    <th style={{ width: 140 }}>Сумма</th>
-                    <th style={{ width: 130 }}>Статус</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayed.map(inv => (
-                    <>
-                      <tr
-                        key={inv.id}
-                        className="clickable"
-                        onClick={() => setExpanded(expanded === inv.id ? null : inv.id)}
-                        aria-expanded={expanded === inv.id}>
-                        <td className="mono" style={{ color: '#888' }}>#{inv.number}</td>
-                        <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
-                        <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
-                        <td>
-                          <span className={`status-badge status-${inv.status}`}>
-                            {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}
-                          </span>
-                        </td>
-                      </tr>
-
-                      {expanded === inv.id && (
-                        <tr key={`${inv.id}-exp`} className="expand-row">
-                          <td colSpan={4}>
-                            <div className="expand-grid">
-                              <div>
-                                <div className="expand-label">Оплачено</div>
-                                <div className="expand-value" style={{ color: '#085041' }}>{inv.paid_display}</div>
-                              </div>
-                              <div>
-                                <div className="expand-label">Остаток</div>
-                                <div className="expand-value" style={{ color: inv.remaining_kopecks > 0 ? '#633806' : '#085041' }}>
-                                  {inv.remaining_display}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="expand-label">Срок оплаты</div>
-                                <div className="expand-value">{formatDateOnly(inv.due_date)}</div>
-                              </div>
-                            </div>
-                            <div className="expand-actions">
-                              {inv.status === 'CREATED' && (
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  disabled={acting === inv.id}
-                                  onClick={e => { e.stopPropagation(); doTransition(inv.id, 'mark_for_control'); }}>
-                                  👁 На контроль
-                                </button>
-                              )}
-                              {inv.status === 'UNDER_CONTROL' && (
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  disabled={acting === inv.id}
-                                  onClick={e => { e.stopPropagation(); doTransition(inv.id, 'set_pending'); }}>
-                                  ⏳ Ожидает оплаты
-                                </button>
-                              )}
-                              {inv.status === 'PAID' && (
-                                <button
-                                  className="btn btn-gray btn-sm"
-                                  disabled={acting === inv.id}
-                                  onClick={e => { e.stopPropagation(); doTransition(inv.id, 'archive'); }}>
-                                  📦 В архив
-                                </button>
-                              )}
-                              {inv.status === 'OVERDUE' && (
-                                <button
-                                  className="btn btn-amber btn-sm"
-                                  disabled={acting === inv.id}
-                                  onClick={e => { e.stopPropagation(); doTransition(inv.id, 'write_off'); }}>
-                                  ✗ Списать
-                                </button>
-                              )}
-                              <a
-                                href={`/invoices/${inv.id}`}
-                                className="btn btn-sm"
-                                onClick={e => e.stopPropagation()}>
-                                Подробнее →
-                              </a>
-                              <a
-                                href={`/payments/new?invoice=${inv.id}`}
-                                className="btn btn-green btn-sm"
-                                onClick={e => e.stopPropagation()}>
-                                + Платёж
-                              </a>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  ))}
-                  {!displayed.length && !invoices.length && (
-                    <tr>
-                      <td colSpan={4} className="empty-state">
-                        Счетов пока нет. <a href="/invoices/new">Загрузить первый счёт →</a>
-                      </td>
-                    </tr>
-                  )}
-                  {!displayed.length && !!invoices.length && (
-                    <tr>
-                      <td colSpan={4} className="empty-state">Нет счетов с таким статусом</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="table-footer">
-              <span>{displayed.length} из {invoices.length} счетов</span>
-              <a href="/invoices">Все счета →</a>
-            </div>
-          </div>
-        </>
-      ) : (
-        /* ─── Детальный вид ─────────────── */
-        <>
-          <div className="metric-grid">
-            <div className="metric-card red">
-              <div className="metric-label">Задолженность</div>
-              <div className="metric-value">{summary?.total_debt?.display ?? '—'}</div>
-            </div>
-            <div className="metric-card amber">
-              <div className="metric-label">Просрочено</div>
-              <div className="metric-value">{summary?.overdue_debt?.display ?? '—'}</div>
-              <div className="metric-hint">{summary?.overdue_debt?.count ?? 0} счетов</div>
-            </div>
-            <div className="metric-card blue">
-              <div className="metric-label">На оплату (7д)</div>
-              <div className="metric-value">{summary?.due_7_days?.display ?? '—'}</div>
-            </div>
-            <div className="metric-card green">
-              <div className="metric-label">Оплачено в месяце</div>
-              <div className="metric-value">{summary?.paid_this_month?.display ?? '—'}</div>
-            </div>
-            <div className="metric-card">
-              <div className="metric-label">Всего счетов</div>
-              <div className="metric-value">{summary?.total_invoices ?? 0}</div>
-            </div>
-            <div className="metric-card blue">
-              <div className="metric-label">Средний срок оплаты</div>
-              <div className="metric-value">
-                {summary?.avg_payment_days == null ? '—' : `${summary.avg_payment_days} дн.`}
-              </div>
-              <div className="metric-hint">от выставления до полной оплаты</div>
-            </div>
-            <div className="metric-card green">
-              <div className="metric-label">Trust Score</div>
-              <div className="metric-value">{summary?.trust_score ?? 50}/100</div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">Все счета</div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>№</th>
-                    <th>Контрагент</th>
-                    <th>Сумма</th>
-                    <th>Остаток</th>
-                    <th>Срок</th>
-                    <th>Статус</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map(inv => (
-                    <tr key={inv.id}>
-                      <td className="mono" style={{ color: '#888' }}>#{inv.number}</td>
-                      <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
-                      <td style={{ color: inv.remaining_kopecks > 0 ? '#633806' : '#085041', fontWeight: 500 }}>
-                        {inv.remaining_display}
-                      </td>
-                      <td style={{ color: '#888', fontSize: 12 }}>{formatDateOnly(inv.due_date)}</td>
-                      <td>
-                        <span className={`status-badge status-${inv.status}`}>
-                          {STATUS_ICON[inv.status]} {STATUS_LABEL[inv.status] ?? inv.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <a href="/counterparties" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>
+                <UserPlus size={15} strokeWidth={1.5} /> Добавить контрагента
+              </a>
+              <a href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text)' }}>
+                <UserCog size={15} strokeWidth={1.5} /> Пригласить коллегу
+              </a>
             </div>
           </div>
         </>

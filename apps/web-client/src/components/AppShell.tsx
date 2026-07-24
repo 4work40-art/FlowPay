@@ -2,19 +2,23 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import {
+  LayoutDashboard, FileText, CreditCard, Calendar, Users, BarChart3,
+  ShieldCheck, Settings, LifeBuoy, LogOut, Crown,
+} from 'lucide-react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 import ReminderPopup from './ReminderPopup';
 
 const NAV = [
-  { href: '/dashboard',      icon: '📊', label: 'Дашборд'      },
-  { href: '/invoices',       icon: '📋', label: 'Счета'        },
-  { href: '/payments',       icon: '💳', label: 'Платежи'      },
-  { href: '/calendar',       icon: '📅', label: 'Календарь'    },
-  { href: '/counterparties', icon: '🤝', label: 'Контрагенты'  },
-  { href: '/analytics',      icon: '📈', label: 'Аналитика'    },
-  { href: '/billing',        icon: '💰', label: 'Тариф'        },
-  { href: '/settings',       icon: '⚙️', label: 'Настройки'    },
+  { href: '/dashboard',      icon: LayoutDashboard, label: 'Дашборд'     },
+  { href: '/invoices',       icon: FileText,        label: 'Счета'       },
+  { href: '/payments',       icon: CreditCard,       label: 'Платежи'     },
+  { href: '/calendar',       icon: Calendar,         label: 'Календарь'   },
+  { href: '/counterparties', icon: Users,            label: 'Контрагенты' },
+  { href: '/analytics',      icon: BarChart3,        label: 'Аналитика'   },
+  { href: '/billing',        icon: ShieldCheck,      label: 'Тариф'       },
+  { href: '/settings',       icon: Settings,         label: 'Настройки'   },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -60,42 +64,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-logo">
-          <div className="sidebar-logo-title">
-            <span>📄</span>
-            <span>Счёт&amp;Контроль</span>
-          </div>
-          <div className="sidebar-logo-sub">{user?.org_name ?? '—'}</div>
-        </div>
+        <div className="sidebar-logo" title="Счёт&amp;Контроль">+</div>
         <nav className="sidebar-nav">
-          {NAV.map(n => (
-            <Link key={n.href} href={n.href} className={`nav-item${pathname.startsWith(n.href) ? ' active' : ''}`}>
-              <span>{n.icon}</span>
-              <span>{n.label}</span>
-            </Link>
-          ))}
+          {NAV.map(n => {
+            const Icon = n.icon;
+            return (
+              <Link key={n.href} href={n.href} className={`nav-item${pathname.startsWith(n.href) ? ' active' : ''}`} title={n.label} aria-label={n.label}>
+                <Icon strokeWidth={1.5} />
+              </Link>
+            );
+          })}
           {user?.is_platform_admin && (
-            <Link href="/admin" className={`nav-item${pathname.startsWith('/admin') ? ' active' : ''}`} style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
-              <span>👑</span>
-              <span>Кабинет создателя</span>
+            <Link href="/admin" className={`nav-item${pathname.startsWith('/admin') ? ' active' : ''}`} title="Кабинет создателя" aria-label="Кабинет создателя">
+              <Crown strokeWidth={1.5} />
             </Link>
           )}
-          <a
-            href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
-            className="nav-item" style={{ marginTop: 8, borderTop: '1px solid rgba(0,0,0,.08)', paddingTop: 16 }}>
-            <span>✉️</span>
-            <span>Поддержка</span>
-          </a>
         </nav>
         <div className="sidebar-footer">
-          <Link href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, color: 'inherit', textDecoration: 'none' }}>
-            <div className="avatar">{initials}</div>
-            <div style={{ flex: 1 }}>
-              <div className="avatar-name">{user?.name ?? '—'}</div>
-              <div className="avatar-role">{ROLE_LABEL[user?.role ?? ''] ?? user?.role} · {PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}</div>
-            </div>
+          <a
+            href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
+            className="nav-item" title="Поддержка" aria-label="Поддержка">
+            <LifeBuoy strokeWidth={1.5} />
+          </a>
+          <Link href="/settings" className="avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`}>
+            {initials}
           </Link>
-          <button className="btn btn-sm" onClick={logout} title="Выйти" aria-label="Выйти">⏻</button>
+          <button className="nav-item" onClick={logout} title="Выйти" aria-label="Выйти" style={{ background: 'transparent', border: 'none' }}>
+            <LogOut strokeWidth={1.5} />
+          </button>
         </div>
       </aside>
 

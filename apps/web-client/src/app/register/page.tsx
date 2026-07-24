@@ -2,8 +2,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
 import { setSession } from '@/lib/auth';
+
+function Corners() {
+  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,62 +37,42 @@ export default function RegisterPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#f5f6f8',
-    }}>
-      <form onSubmit={submit} className="card" style={{ width: 360, padding: 28 }}>
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
-          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Регистрация организации</div>
+    <div className="auth-shell" style={{ padding: '32px 24px' }}>
+      <form onSubmit={submit} className="card blueprint auth-card" style={{ maxWidth: 420 }}>
+        <Corners />
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+          <div className="auth-brand">+</div>
+          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 20, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.02em' }}>Счёт&amp;Контроль</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-neutral-700)' }}>Регистрация организации</div>
         </div>
 
         {error && (
           <div className="error-box" style={{ marginBottom: 14 }}>{error}</div>
         )}
 
-        <label htmlFor="reg-org" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Название организации</label>
-        <input
-          id="reg-org"
-          type="text"
-          required
-          value={orgName}
-          onChange={e => setOrgName(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
-        />
+        <div className="field">
+          <label htmlFor="reg-org">Название организации</label>
+          <input id="reg-org" className="input" type="text" required value={orgName} onChange={e => setOrgName(e.target.value)} />
+        </div>
 
-        <label htmlFor="reg-name" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Ваше имя</label>
-        <input
-          id="reg-name"
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
-        />
+        <div className="field">
+          <label htmlFor="reg-name">Ваше имя</label>
+          <input id="reg-name" className="input" type="text" value={name} onChange={e => setName(e.target.value)} />
+        </div>
 
-        <label htmlFor="reg-email" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Email</label>
-        <input
-          id="reg-email"
-          type="email"
-          required
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }}
-        />
+        <div className="field">
+          <label htmlFor="reg-email">Email</label>
+          <input id="reg-email" className="input" type="email" required value={email} onChange={e => setEmail(e.target.value)} />
+        </div>
 
-        <label htmlFor="reg-password" style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Пароль (минимум 8 символов)</label>
-        <input
-          id="reg-password"
-          type="password"
-          required
-          minLength={8}
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          style={{ width: '100%', padding: '8px 10px', marginBottom: 18, border: '1px solid #ddd', borderRadius: 6 }}
-        />
+        <div className="field">
+          <label htmlFor="reg-password">Пароль (минимум 8 символов)</label>
+          <input id="reg-password" className="input" type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} />
+        </div>
 
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#666', marginBottom: 16, cursor: 'pointer' }}>
-          <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
+        <label style={{ display: 'flex', gap: 8, fontSize: 11.5, color: 'var(--color-neutral-700)', margin: '2px 0 16px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 2, width: 'auto', minHeight: 'auto' }} />
           <span>
             Я согласен(на) с <Link href="/privacy" target="_blank">политикой конфиденциальности</Link> и{' '}
             <Link href="/offer" target="_blank">публичной офертой</Link>, даю согласие на обработку
@@ -95,16 +80,17 @@ export default function RegisterPage() {
           </span>
         </label>
 
-        <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', marginBottom: 12 }}>
+        <button type="submit" className="btn btn-primary btn-block blueprint" disabled={loading}>
+          <Corners />
           {loading ? 'Создаём…' : 'Зарегистрироваться'}
         </button>
 
-        <div style={{ textAlign: 'center', fontSize: 13 }}>
+        <div style={{ textAlign: 'center', fontSize: 13, marginTop: 6 }}>
           Уже есть аккаунт? <Link href="/login">Войти</Link>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 18, paddingTop: 14, borderTop: '1px solid #eee', color: '#999', fontSize: 12 }}>
-          <span>🔒</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--color-divider)', color: 'var(--color-neutral-700)', fontSize: 11.5 }}>
+          <ShieldCheck size={14} strokeWidth={1.5} />
           <span>Данные вашей организации не видны другим пользователям сервиса</span>
         </div>
       </form>

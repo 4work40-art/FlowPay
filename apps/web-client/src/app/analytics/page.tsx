@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { api, fmt } from '@/lib/api';
 
 const AGING_BUCKETS = [
@@ -8,6 +9,10 @@ const AGING_BUCKETS = [
   { key: '60-90', label: '60–90 дней',  max: 90  },
   { key: '90+',   label: '90+ дней',    max: Infinity },
 ];
+const AGING_SHADE: Record<string, string> = {
+  '0-30': 'var(--color-accent-300)', '30-60': 'var(--color-accent-500)',
+  '60-90': 'var(--color-accent-700)', '90+': 'var(--color-accent-900)',
+};
 
 function computeAging(invoices: any[]) {
   const now = Date.now();
@@ -27,18 +32,17 @@ type RatingItem = {
   counterparty_id: string; name: string; inn: string | null;
   total_kopecks: number; total_display: string; share_pct: number; cumulative_pct: number; group: 'A' | 'B' | 'C';
 };
-const GROUP_COLOR: Record<string, string> = {
-  A: 'var(--green-dark, #1a7a4c)', B: 'var(--amber-dark, #a06a00)', C: 'var(--text2, #888)',
-};
-const GROUP_BG: Record<string, string> = {
-  A: 'var(--green-light, #e8f5ee)', B: 'var(--amber-light, #fdf1dc)', C: 'var(--border-light, #f0f0f0)',
-};
+const GROUP_TAG: Record<string, string> = { A: 'tag tag-accent', B: 'tag tag-outline', C: 'tag tag-neutral' };
 
 type ItemSummary = {
   name: string; total_quantity: number; total_kopecks: number; total_display: string;
   avg_price_kopecks: number | null; avg_price_display: string | null;
   active_months: number; last_purchase_date: string | null;
 };
+
+function Corners() {
+  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
+}
 
 export default function AnalyticsPage() {
   const [summary,  setSummary]  = useState<any>(null);
@@ -98,105 +102,95 @@ export default function AnalyticsPage() {
     if (next && !audit.length) loadAudit();
   };
 
-  if (loading) return <div className="loading">⏳ Загрузка...</div>;
+  if (loading) return <div className="loading">Загрузка...</div>;
   if (error) {
     return (
       <div className="error-box">
         <strong>Ошибка соединения:</strong> {error}
         <br />
-        <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={load}>↺ Повторить</button>
+        <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={load}><RefreshCw size={13} strokeWidth={1.5} /> Повторить</button>
       </div>
     );
   }
 
   const metrics = [
-    { l: 'Задолженность',     v: summary?.total_debt?.display,      cls: 'red'   },
-    { l: 'Просрочено',        v: summary?.overdue_debt?.display,     cls: 'amber' },
-    { l: 'Оплачено в месяц',  v: summary?.paid_this_month?.display,  cls: 'green' },
-    { l: 'Trust Score',       v: `${summary?.trust_score ?? 50}/100`,cls: 'green' },
-    { l: 'Всего счетов',      v: summary?.total_invoices ?? 0,       cls: ''      },
-    { l: 'На оплату (7д)',    v: summary?.due_7_days?.display,       cls: 'blue'  },
+    { l: 'Задолженность',     v: summary?.total_debt?.display },
+    { l: 'Просрочено',        v: summary?.overdue_debt?.display },
+    { l: 'Оплачено в месяц',  v: summary?.paid_this_month?.display },
+    { l: 'Trust Score',       v: `${summary?.trust_score ?? 50}/100` },
+    { l: 'Всего счетов',      v: summary?.total_invoices ?? 0 },
+    { l: 'На оплату (7д)',    v: summary?.due_7_days?.display },
   ];
 
   const aging = computeAging(invoices);
   const maxAging = Math.max(1, ...AGING_BUCKETS.map(b => aging[b.key].sum));
+  const hasAging = AGING_BUCKETS.some(b => aging[b.key].count);
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-title">Аналитика</div>
-      </div>
+      <h1 className="page-title" style={{ marginBottom: 20 }}>Аналитика</h1>
 
-      <div className="metric-grid" style={{ marginBottom: 24 }}>
-        {metrics.map(m => (
-          <div key={m.l} className={`metric-card${m.cls ? ' ' + m.cls : ''}`}>
-            <div className="metric-label">{m.l}</div>
-            <div className="metric-value">{m.v ?? '—'}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', border: '1px solid var(--color-divider)', marginBottom: 24 }}>
+        {metrics.map((m, i) => (
+          <div key={m.l} style={{ padding: '14px 16px', borderRight: i < metrics.length - 1 ? '1px solid var(--color-divider)' : 'none' }}>
+            <div className="metric-label" style={{ fontSize: 10.5 }}>{m.l}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 20, fontWeight: 600 }}>{m.v ?? '—'}</div>
           </div>
         ))}
       </div>
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-header">Возраст просроченной задолженности</div>
-        <div className="card-body">
-          {maxAging <= 1 && !AGING_BUCKETS.some(b => aging[b.key].count) ? (
-            <div className="empty-state">Просроченных счетов нет</div>
-          ) : (
-            <div style={{ display: 'flex', gap: 16 }}>
-              {AGING_BUCKETS.map(b => (
-                <div key={b.key} style={{ flex: 1, textAlign: 'center' }}>
-                  <div style={{ height: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                    <div style={{
-                      width: 40,
-                      height: Math.max(3, (aging[b.key].sum / maxAging) * 90),
-                      background: b.key === '90+' ? 'var(--red)' : b.key === '60-90' ? 'var(--amber)' : 'var(--blue)',
-                      borderRadius: '3px 3px 0 0',
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>{fmt(aging[b.key].sum)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>{b.label} · {aging[b.key].count} сч.</div>
+      <div className="section-title" style={{ marginTop: 0 }}>Возраст просроченной задолженности</div>
+      <div className="card blueprint" style={{ position: 'relative', marginBottom: 24, padding: 0 }}>
+        <Corners />
+        {!hasAging ? (
+          <div className="empty-state">Просроченных счетов нет</div>
+        ) : (
+          <div style={{ display: 'flex', gap: 20, padding: 20 }}>
+            {AGING_BUCKETS.map(b => (
+              <div key={b.key} style={{ flex: 1, textAlign: 'center' }}>
+                <div style={{ height: 110, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                  <div style={{
+                    width: 44,
+                    height: Math.max(3, (aging[b.key].sum / maxAging) * 90),
+                    background: AGING_SHADE[b.key],
+                    borderRadius: 0,
+                  }} />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>{fmt(aging[b.key].sum)}</div>
+                <div style={{ fontSize: 11, color: 'var(--color-neutral-700)' }}>{b.label} · {aging[b.key].count} сч.</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-header">
-          <span>Рейтинг поставщиков по объёму закупок</span>
-          {ratingTotal && <span style={{ color: 'var(--text2)', fontWeight: 400 }}>Всего закупок: {ratingTotal}</span>}
-        </div>
-        <div className="card-body" style={{ paddingTop: 0 }}>
-          <p style={{ fontSize: 13, color: 'var(--text2)', margin: '10px 0 14px' }}>
-            ABC-анализ (правило Парето): <b style={{ color: GROUP_COLOR.A }}>A</b> — первые 80% суммарного объёма
-            закупок, <b style={{ color: GROUP_COLOR.B }}>B</b> — следующие 15%, <b style={{ color: GROUP_COLOR.C }}>C</b> — оставшиеся 5%.
-            Считается по сумме выставленных счетов, не по факту оплаты.
-          </p>
-        </div>
+      <div className="section-title">Рейтинг поставщиков по объёму закупок</div>
+      <p style={{ fontSize: 12.5, color: 'var(--color-neutral-700)', margin: '4px 0 14px', maxWidth: '70ch' }}>
+        ABC-анализ (правило Парето): <b>A</b> — первые 80% суммарного объёма закупок,{' '}
+        <b>B</b> — следующие 15%, <b>C</b> — оставшиеся 5%.
+        {ratingTotal && <> Всего закупок: {ratingTotal}.</>}
+      </p>
+      <div className="card blueprint" style={{ position: 'relative', marginBottom: 24, padding: 0 }}>
+        <Corners />
         {ratingLoading ? (
-          <div className="card-body"><div className="loading">⏳ Загрузка...</div></div>
+          <div className="loading">Загрузка...</div>
         ) : ratingError ? (
-          <div className="card-body"><div className="error-box">{ratingError}</div></div>
+          <div className="error-box" style={{ margin: 16 }}>{ratingError}</div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="table">
               <thead>
-                <tr><th>#</th><th>Название</th><th>ИНН</th><th>Сумма закупок</th><th>Доля</th><th>Группа</th></tr>
+                <tr><th style={{ width: 36 }}>#</th><th>Название</th><th style={{ width: 120 }}>ИНН</th><th style={{ width: 120 }}>Сумма закупок</th><th style={{ width: 70 }}>Доля</th><th style={{ width: 70 }}>Группа</th></tr>
               </thead>
               <tbody>
                 {rating.map((r, i) => (
                   <tr key={r.counterparty_id}>
-                    <td style={{ color: 'var(--text2)' }}>{i + 1}</td>
+                    <td className="text-muted">{i + 1}</td>
                     <td style={{ fontWeight: 500 }}>{r.name}</td>
-                    <td style={{ color: 'var(--text2)' }}>{r.inn ?? '—'}</td>
+                    <td className="text-muted">{r.inn ?? '—'}</td>
                     <td style={{ fontWeight: 600 }}>{r.total_display}</td>
                     <td>{r.share_pct}%</td>
-                    <td>
-                      <span style={{ background: GROUP_BG[r.group], color: GROUP_COLOR[r.group], padding: '2px 10px', borderRadius: 12, fontWeight: 600, fontSize: 12.5 }}>
-                        {r.group}
-                      </span>
-                    </td>
+                    <td><span className={GROUP_TAG[r.group]}>{r.group}</span></td>
                   </tr>
                 ))}
                 {!rating.length && <tr><td colSpan={6} className="empty-state">Пока нет закупок с привязкой к контрагенту</td></tr>}
@@ -206,25 +200,26 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-header">
-          <span>Учёт товаров/услуг</span>
-          <a href="/analytics/items" className="btn btn-sm">Подробно и динамика цен →</a>
+      <div className="section-title">Учёт товаров/услуг</div>
+      <div className="card blueprint" style={{ position: 'relative', marginBottom: 24, padding: 0 }}>
+        <Corners />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 18px' }}>
+          <a href="/analytics/items" className="btn btn-ghost btn-sm">Подробно и динамика цен →</a>
         </div>
         {itemsLoading ? (
-          <div className="card-body"><div className="loading">⏳ Загрузка...</div></div>
+          <div className="loading">Загрузка...</div>
         ) : itemsError ? (
-          <div className="card-body"><div className="error-box">{itemsError}</div></div>
+          <div className="error-box" style={{ margin: 16 }}>{itemsError}</div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table className="table">
               <thead>
                 <tr>
                   <th>Наименование</th>
-                  <th>Куплено, шт.</th>
-                  <th>Сумма закупок</th>
-                  <th>Средняя цена/шт.</th>
-                  <th>Последняя закупка</th>
+                  <th style={{ width: 110 }}>Куплено, шт.</th>
+                  <th style={{ width: 110 }}>Сумма закупок</th>
+                  <th style={{ width: 130 }}>Средняя цена/шт.</th>
+                  <th style={{ width: 130 }}>Последняя закупка</th>
                 </tr>
               </thead>
               <tbody>
@@ -234,14 +229,14 @@ export default function AnalyticsPage() {
                     <td>{it.total_quantity}</td>
                     <td>{it.total_display}</td>
                     <td>{it.avg_price_display ?? '—'}</td>
-                    <td>{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
+                    <td className="text-muted">{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
                   </tr>
                 ))}
                 {!items.length && <tr><td colSpan={5} className="empty-state">Пока нет позиций — добавьте товары/услуги в счета</td></tr>}
               </tbody>
             </table>
             {items.length > 10 && (
-              <div style={{ padding: '10px 16px', fontSize: 13, color: 'var(--text2)' }}>
+              <div style={{ padding: '10px 18px', fontSize: 12.5, color: 'var(--color-neutral-700)' }}>
                 Показаны первые 10 из {items.length} — <a href="/analytics/items">полный список и динамика цен →</a>
               </div>
             )}
@@ -249,17 +244,18 @@ export default function AnalyticsPage() {
         )}
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <span>Журнал событий (Audit Log)</span>
-          <button className="btn btn-sm" onClick={toggleAudit}>
+      <div className="section-title">Журнал событий</div>
+      <div className="card blueprint" style={{ position: 'relative', padding: 0 }}>
+        <Corners />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 18px', borderBottom: showAudit ? '1px solid var(--color-divider)' : 'none' }}>
+          <button className="btn btn-ghost btn-sm" onClick={toggleAudit}>
             {showAudit ? 'Скрыть' : 'Показать последние события'}
           </button>
         </div>
         {showAudit && (
           <div>
             {auditLoading ? (
-              <div className="card-body"><div className="loading">⏳ Загрузка...</div></div>
+              <div className="loading">Загрузка...</div>
             ) : (
               <>
                 {audit.map((e, i) => (
