@@ -18,14 +18,17 @@ export default function PaymentsPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
   const [importError, setImportError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  // silent=true — обновить список без спиннера (после удаления платежа):
+  // иначе таблица на секунду пропадает целиком и ощущается как перезагрузка.
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     api.payments.list({ page: String(page), limit: String(PAGE_SIZE) })
       .then(r => { setPayments(r.data?.items ?? []); setTotal(r.data?.total ?? 0); })
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [page]);
 
   useEffect(() => { load(); }, [load]);
@@ -113,7 +116,7 @@ export default function PaymentsPage() {
 
       {error && (
         <div className="error-box">
-          {error} <button className="btn btn-sm" onClick={load} style={{ marginLeft: 8 }}>Повторить</button>
+          {error} <button className="btn btn-sm" onClick={() => load()} style={{ marginLeft: 8 }}>Повторить</button>
         </div>
       )}
 
@@ -143,14 +146,23 @@ export default function PaymentsPage() {
                     <td style={{ color: '#888', fontSize: 12 }}>{p.reference || '—'}</td>
                     <td>
                       <button
-                        type="button" className="btn btn-sm" title="Удалить платёж (например, если разнесён по ошибке)"
+                        type="button" className="btn btn-sm" disabled={deletingId === p.id}
+                        title="Удалить платёж (например, если разнесён по ошибке)"
                         onClick={async () => {
                           if (!confirm(`Удалить платёж на ${p.amount_display} по счёту #${p.invoice_number}? Сумма и статус счёта будут пересчитаны.`)) return;
+                          setDeletingId(p.id);
+                          // Убираем строку сразу — не ждём ответа сервера, чтобы не было
+                          // ощущения перезагрузки страницы; счётчик подправится тихим обновлением.
+                          setPayments(prev => prev.filter(x => x.id !== p.id));
+                          setTotal(t => Math.max(0, t - 1));
                           try {
                             await api.payments.delete(p.id);
-                            load();
+                            load(true);
                           } catch (e: any) {
                             alert(e.message || 'Не удалось удалить платёж');
+                            load(true); // откатываем оптимистичное удаление, если запрос не прошёл
+                          } finally {
+                            setDeletingId(null);
                           }
                         }}
                       >

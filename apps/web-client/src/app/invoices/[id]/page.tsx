@@ -41,18 +41,23 @@ export default function InvoiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [acting,  setActing]  = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
   const [docs, setDocs] = useState<Doc[]>([]);
   const [uploading, setUploading] = useState(false);
   const [docError, setDocError] = useState('');
 
-  const load = useCallback(() => {
-    setLoading(true);
+  // silent=true — обновить данные счёта без полноэкранного спиннера (после
+  // локальных изменений вроде удаления платежа/позиции): иначе весь контент
+  // страницы на секунду пропадает и ощущается как перезагрузка страницы.
+  // Полный спиннер нужен только при первом заходе на страницу.
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     api.invoices.get(id)
       .then(res => setInv(res.data))
       .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [id]);
 
   const loadDocs = useCallback(() => {
@@ -222,7 +227,7 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      <ItemsCard invoiceId={id} items={inv.items ?? []} onChanged={load} />
+      <ItemsCard invoiceId={id} items={inv.items ?? []} onChanged={() => load(true)} />
 
       <div className="card">
         <div className="card-header">История платежей</div>
@@ -247,14 +252,22 @@ export default function InvoiceDetailPage() {
                   <td style={{ display: 'flex', gap: 6 }}>
                     <a className="btn btn-sm" href={`/invoices/${id}/receipt?payment=${p.id}`} target="_blank" rel="noreferrer">Акт</a>
                     <button
-                      type="button" className="btn btn-sm" title="Удалить платёж (например, если разнесён по ошибке)"
+                      type="button" className="btn btn-sm" disabled={deletingPaymentId === p.id}
+                      title="Удалить платёж (например, если разнесён по ошибке)"
                       onClick={async () => {
                         if (!confirm(`Удалить платёж на ${p.amount_display} от ${new Date(p.payment_date).toLocaleDateString('ru-RU')}? Сумма и статус счёта будут пересчитаны.`)) return;
+                        setDeletingPaymentId(p.id);
+                        // Убираем строку сразу, не дожидаясь ответа сервера — ощущается
+                        // мгновенно; точные суммы/статус подтянутся тихим обновлением ниже.
+                        setInv((prev: any) => prev && { ...prev, payments: prev.payments.filter((x: Payment) => x.id !== p.id) });
                         try {
                           await api.payments.delete(p.id);
-                          load();
+                          load(true);
                         } catch (e: any) {
                           alert(e.message || 'Не удалось удалить платёж');
+                          load(true); // откатываем оптимистичное удаление, если запрос не прошёл
+                        } finally {
+                          setDeletingPaymentId(null);
                         }
                       }}
                     >
