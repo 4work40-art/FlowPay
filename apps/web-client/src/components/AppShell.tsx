@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, FileText, CreditCard, Calendar, Users, BarChart3,
-  ShieldCheck, Settings, LifeBuoy, LogOut, Crown,
+  Landmark, Settings, LifeBuoy, LogOut, Crown,
 } from 'lucide-react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
@@ -13,12 +13,12 @@ import ReminderPopup from './ReminderPopup';
 const NAV = [
   { href: '/dashboard',      icon: LayoutDashboard, label: 'Дашборд'     },
   { href: '/invoices',       icon: FileText,        label: 'Счета'       },
-  { href: '/payments',       icon: CreditCard,       label: 'Платежи'     },
-  { href: '/calendar',       icon: Calendar,         label: 'Календарь'   },
-  { href: '/counterparties', icon: Users,            label: 'Контрагенты' },
-  { href: '/analytics',      icon: BarChart3,        label: 'Аналитика'   },
-  { href: '/billing',        icon: ShieldCheck,      label: 'Тариф'       },
-  { href: '/settings',       icon: Settings,         label: 'Настройки'   },
+  { href: '/payments',       icon: CreditCard,      label: 'Платежи'     },
+  { href: '/calendar',       icon: Calendar,        label: 'Календарь'   },
+  { href: '/counterparties', icon: Users,           label: 'Контрагенты' },
+  { href: '/analytics',      icon: BarChart3,       label: 'Аналитика'   },
+  { href: '/billing',        icon: Landmark,        label: 'Тариф'       },
+  { href: '/settings',       icon: Settings,        label: 'Настройки'   },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -50,7 +50,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (isPublic) return <>{children}</>;
 
   if (!checked) {
-    return <div className="loading">⏳ Проверка сессии...</div>;
+    return <div className="loading">Проверка сессии…</div>;
   }
 
   const logout = async () => {
@@ -63,33 +63,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-logo" title="Счёт&amp;Контроль">+</div>
-        <nav className="sidebar-nav">
+      <aside className="fp-rail">
+        <div className="fp-brand">+</div>
+        <nav className="fp-nav">
           {NAV.map(n => {
             const Icon = n.icon;
+            const active = pathname.startsWith(n.href);
             return (
-              <Link key={n.href} href={n.href} className={`nav-item${pathname.startsWith(n.href) ? ' active' : ''}`} title={n.label} aria-label={n.label}>
+              <Link key={n.href} href={n.href} className={`fp-item${active ? ' active' : ''}`} title={n.label}>
                 <Icon strokeWidth={1.5} />
               </Link>
             );
           })}
           {user?.is_platform_admin && (
-            <Link href="/admin" className={`nav-item${pathname.startsWith('/admin') ? ' active' : ''}`} title="Кабинет создателя" aria-label="Кабинет создателя">
+            <Link href="/admin" className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`} title="Кабинет создателя">
               <Crown strokeWidth={1.5} />
             </Link>
           )}
         </nav>
-        <div className="sidebar-footer">
+        <div className="fp-foot">
           <a
             href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
-            className="nav-item" title="Поддержка" aria-label="Поддержка">
+            className="fp-item" title="Поддержка">
             <LifeBuoy strokeWidth={1.5} />
           </a>
-          <Link href="/settings" className="avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`}>
+          <Link href="/settings" className="fp-avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`}>
             {initials}
           </Link>
-          <button className="nav-item" onClick={logout} title="Выйти" aria-label="Выйти" style={{ background: 'transparent', border: 'none' }}>
+          <button className="fp-item" onClick={logout} title="Выйти" aria-label="Выйти">
             <LogOut strokeWidth={1.5} />
           </button>
         </div>

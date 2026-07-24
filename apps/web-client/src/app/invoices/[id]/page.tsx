@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Link2, Ban, Unlock, Upload, Plus, X } from 'lucide-react';
+import { Link2, Ban, Unlock, ArrowLeft, Plus, Download, Trash2, X } from 'lucide-react';
 import { api, STATUS_LABEL, STATUS_DESCRIPTION } from '@/lib/api';
 
 type Payment = {
@@ -18,15 +18,21 @@ const METHOD_LABEL: Record<string, string> = {
   bank_transfer: 'Банковский перевод', cash: 'Наличные', check: 'Чек', online: 'Онлайн-оплата',
 };
 
-const TRANSITIONS: Record<string, { label: string; from: string[] }> = {
-  mark_for_control: { label: 'На контроль',      from: ['CREATED'] },
-  set_pending:      { label: 'Ожидает оплаты',    from: ['UNDER_CONTROL'] },
-  mark_overdue:     { label: 'Отметить просрочку', from: ['PAYMENT_PENDING', 'UNDER_CONTROL'] },
-  open_dispute:     { label: 'Открыть спор',       from: ['PAYMENT_PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-  resolve_dispute:  { label: 'Закрыть спор',       from: ['DISPUTED'] },
-  write_off:        { label: 'Списать',            from: ['OVERDUE'] },
-  archive:          { label: 'В архив',            from: ['PAID'] },
+const TRANSITIONS: Record<string, { label: string; from: string[]; cls: string }> = {
+  mark_for_control: { label: 'На контроль',      from: ['CREATED'],                                   cls: 'btn-primary' },
+  set_pending:      { label: 'Ожидает оплаты',    from: ['UNDER_CONTROL'],                             cls: 'btn-primary' },
+  mark_overdue:     { label: 'Отметить просрочку', from: ['PAYMENT_PENDING', 'UNDER_CONTROL'],          cls: 'btn-secondary'   },
+  open_dispute:     { label: 'Открыть спор',       from: ['PAYMENT_PENDING', 'OVERDUE', 'PARTIALLY_PAID'], cls: 'btn-secondary'   },
+  resolve_dispute:  { label: 'Закрыть спор',       from: ['DISPUTED'],                                  cls: 'btn-primary' },
+  write_off:        { label: 'Списать',            from: ['OVERDUE'],                                   cls: 'btn-secondary'   },
+  archive:          { label: 'В архив',           from: ['PAID'],                                      cls: 'btn-secondary'    },
 };
+
+function statusTagClass(status: string) {
+  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
+  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
+  return 'tag tag-neutral';
+}
 
 type Doc = { id: string; filename: string; mime_type: string; size_bytes: number; created_at: string };
 
@@ -34,16 +40,6 @@ function fmtSize(bytes: number) {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
   return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
-}
-
-function Corners() {
-  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
-}
-
-function tagClass(status: string) {
-  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
-  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
-  return 'tag tag-neutral';
 }
 
 export default function InvoiceDetailPage() {
@@ -58,6 +54,10 @@ export default function InvoiceDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [docError, setDocError] = useState('');
 
+  // silent=true — обновить данные счёта без полноэкранного спиннера (после
+  // локальных изменений вроде удаления платежа/позиции): иначе весь контент
+  // страницы на секунду пропадает и ощущается как перезагрузка страницы.
+  // Полный спиннер нужен только при первом заходе на страницу.
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     setError('');
@@ -99,7 +99,7 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  if (loading) return <div className="loading">Загрузка...</div>;
+  if (loading) return <div className="loading">Загрузка…</div>;
   if (error) return <div className="error-box"><strong>Ошибка:</strong> {error}</div>;
   if (!inv) return null;
 
@@ -109,91 +109,95 @@ export default function InvoiceDetailPage() {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title" style={{ fontSize: 28 }}>Счёт №{inv.number ?? '—'}</h1>
+          <div className="page-title">Счёт №{inv.number ?? '—'}</div>
           <div className="page-sub">{inv.counterparty_name ?? 'без контрагента'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {inv.public_enabled ? (
             <>
               <button
-                type="button" className="btn btn-secondary blueprint btn-sm"
+                className="btn btn-secondary btn-sm"
                 onClick={() => {
                   const url = `${window.location.origin}/public/invoice/${id}`;
                   navigator.clipboard?.writeText(url);
                   alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
                 }}>
-                <Corners /><Link2 size={14} strokeWidth={1.5} /> Поделиться
+                <Link2 size={14} strokeWidth={1.5} /> Поделиться
               </button>
               <button
-                type="button" className="btn btn-secondary blueprint btn-sm"
+                className="btn btn-secondary btn-sm"
                 title="Публичная ссылка перестанет открываться у контрагента"
                 onClick={async () => {
                   try { await api.invoices.setPublic(id, false); setInv({ ...inv, public_enabled: false }); }
                   catch (e: any) { alert(e.message); }
                 }}>
-                <Corners /><Ban size={14} strokeWidth={1.5} /> Закрыть доступ
+                <Ban size={14} strokeWidth={1.5} /> Закрыть доступ
               </button>
             </>
           ) : (
             <button
-              type="button" className="btn btn-secondary blueprint btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={async () => {
                 try { await api.invoices.setPublic(id, true); setInv({ ...inv, public_enabled: true }); }
                 catch (e: any) { alert(e.message); }
               }}>
-              <Corners /><Unlock size={14} strokeWidth={1.5} /> Открыть доступ по ссылке
+              <Unlock size={14} strokeWidth={1.5} /> Открыть доступ по ссылке
             </button>
           )}
-          <a href="/invoices" className="btn btn-ghost btn-sm">← К списку</a>
+          <a href="/invoices" className="btn btn-secondary btn-sm"><ArrowLeft size={14} strokeWidth={1.5} /> К списку</a>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', border: '1px solid var(--color-divider)', marginBottom: 20 }}>
-        <div style={{ padding: '16px 18px', borderRight: '1px solid var(--color-divider)' }}>
+      <div className="metric-grid">
+        <div className="metric-card blueprint">
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
           <div className="metric-label">Сумма счёта</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, fontWeight: 600 }}>{inv.amount_display}</div>
+          <div className="metric-value">{inv.amount_display}</div>
         </div>
-        <div style={{ padding: '16px 18px', borderRight: '1px solid var(--color-divider)' }}>
+        <div className="metric-card blueprint">
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
           <div className="metric-label">Оплачено</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, fontWeight: 600 }}>{inv.paid_display}</div>
+          <div className="metric-value">{inv.paid_display}</div>
         </div>
-        <div style={{ padding: '16px 18px', borderRight: '1px solid var(--color-divider)' }}>
+        <div className="metric-card amber blueprint">
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
           <div className="metric-label">Остаток</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, fontWeight: 600, color: 'var(--color-accent-700)' }}>{inv.remaining_display}</div>
+          <div className="metric-value">{inv.remaining_display}</div>
         </div>
-        <div style={{ padding: '16px 18px' }}>
+        <div className="metric-card blueprint">
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
           <div className="metric-label">Срок оплаты</div>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 18, fontWeight: 600 }}>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('ru-RU') : '—'}</div>
+          <div className="metric-value" style={{ fontSize: 16 }}>{inv.due_date ? new Date(inv.due_date).toLocaleDateString('ru-RU') : '—'}</div>
         </div>
       </div>
 
-      <div className="card blueprint" style={{ position: 'relative', marginBottom: 20, padding: 0 }}>
-        <Corners />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--color-divider)', flexWrap: 'wrap', gap: 10 }}>
-          <span className={tagClass(inv.status)} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
+      <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
+        <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+        <div className="card-header">
+          <span className={statusTagClass(inv.status)} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
             {STATUS_LABEL[inv.status] ?? inv.status}
           </span>
           {inv.remaining_kopecks > 0 && !['DISPUTED', 'ARCHIVED', 'WRITTEN_OFF'].includes(inv.status) && (
-            <a href={`/payments/new?invoice=${inv.id}`} className="btn btn-primary blueprint btn-sm"><Corners /><Plus size={13} strokeWidth={1.5} /> Платёж</a>
+            <a href={`/payments/new?invoice=${inv.id}`} className="btn btn-primary btn-sm"><Plus size={14} strokeWidth={1.5} /> Платёж</a>
           )}
         </div>
-        {inv.notes && <div style={{ padding: '14px 18px', color: 'var(--color-neutral-700)' }}>{inv.notes}</div>}
-        <div style={{ padding: '14px 18px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {inv.notes && <div className="card-body text-muted">{inv.notes}</div>}
+        <div className="card-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {available.map(([key, t]) => (
-            <button key={key} type="button" className="btn btn-secondary blueprint btn-sm" disabled={acting} onClick={() => doTransition(key)}>
-              <Corners />{t.label}
+            <button key={key} className={`btn btn-sm ${t.cls}`} disabled={acting} onClick={() => doTransition(key)}>
+              {t.label}
             </button>
           ))}
           {!available.length && <span className="field-hint">Для этого статуса действий больше нет.</span>}
         </div>
       </div>
 
-      <div className="section-title">Документы</div>
-      <div className="card blueprint" style={{ position: 'relative', marginBottom: 20, padding: 0 }}>
-        <Corners />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 18px', borderBottom: '1px solid var(--color-divider)' }}>
-          <label className="btn btn-primary blueprint btn-sm" style={{ cursor: 'pointer' }}>
-            <Corners /><Upload size={14} strokeWidth={1.5} /> {uploading ? 'Загружаем…' : 'Прикрепить файл'}
+      <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
+        <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+        <div className="card-header">
+          Документы
+          <label className="btn btn-sm btn-primary" style={{ cursor: 'pointer' }}>
+            {uploading ? 'Загружаем…' : <><Plus size={14} strokeWidth={1.5} /> Прикрепить файл</>}
             <input
               type="file"
               accept="application/pdf,image/jpeg,image/png"
@@ -203,15 +207,15 @@ export default function InvoiceDetailPage() {
             />
           </label>
         </div>
-        {docError && <div className="error-box" style={{ margin: '0 18px 12px' }}>{docError}</div>}
+        {docError && <div className="error-box">{docError}</div>}
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th>Файл</th>
-                <th style={{ width: 90 }}>Размер</th>
-                <th style={{ width: 150 }}>Загружен</th>
-                <th style={{ width: 110 }} />
+                <th>Размер</th>
+                <th>Загружен</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -219,9 +223,11 @@ export default function InvoiceDetailPage() {
                 <tr key={d.id}>
                   <td style={{ fontWeight: 500 }}>{d.filename}</td>
                   <td className="text-muted">{fmtSize(d.size_bytes)}</td>
-                  <td className="text-muted">{new Date(d.created_at).toLocaleString('ru-RU')}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>{new Date(d.created_at).toLocaleString('ru-RU')}</td>
                   <td>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => api.documents.download(d.id, d.filename)}>Скачать</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => api.documents.download(d.id, d.filename)}>
+                      <Download size={14} strokeWidth={1.5} /> Скачать
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -231,16 +237,16 @@ export default function InvoiceDetailPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '10px 18px', borderTop: '1px solid var(--color-divider)' }}>
+        <div className="card-body" style={{ borderTop: '1px solid var(--color-divider)' }}>
           <span className="field-hint">Разрешены PDF, JPG, PNG, до 15 МБ. Автоматическое распознавание полей — в следующих обновлениях.</span>
         </div>
       </div>
 
       <ItemsCard invoiceId={id} items={inv.items ?? []} onChanged={() => load(true)} />
 
-      <div className="section-title">История платежей</div>
-      <div className="card blueprint" style={{ position: 'relative', padding: 0 }}>
-        <Corners />
+      <div className="card blueprint" style={{ marginTop: 'var(--space-4)' }}>
+        <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+        <div className="card-header">История платежей</div>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -249,7 +255,7 @@ export default function InvoiceDetailPage() {
                 <th>Сумма</th>
                 <th>Способ</th>
                 <th>Референс</th>
-                <th style={{ width: 90 }} />
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -262,24 +268,26 @@ export default function InvoiceDetailPage() {
                   <td style={{ display: 'flex', gap: 6 }}>
                     <a className="btn btn-ghost btn-sm" href={`/invoices/${id}/receipt?payment=${p.id}`} target="_blank" rel="noreferrer">Акт</a>
                     <button
-                      type="button" className="btn btn-ghost btn-icon" disabled={deletingPaymentId === p.id}
+                      type="button" className="btn btn-icon btn-secondary" disabled={deletingPaymentId === p.id}
                       title="Удалить платёж (например, если разнесён по ошибке)"
                       onClick={async () => {
                         if (!confirm(`Удалить платёж на ${p.amount_display} от ${new Date(p.payment_date).toLocaleDateString('ru-RU')}? Сумма и статус счёта будут пересчитаны.`)) return;
                         setDeletingPaymentId(p.id);
+                        // Убираем строку сразу, не дожидаясь ответа сервера — ощущается
+                        // мгновенно; точные суммы/статус подтянутся тихим обновлением ниже.
                         setInv((prev: any) => prev && { ...prev, payments: prev.payments.filter((x: Payment) => x.id !== p.id) });
                         try {
                           await api.payments.delete(p.id);
                           load(true);
                         } catch (e: any) {
                           alert(e.message || 'Не удалось удалить платёж');
-                          load(true);
+                          load(true); // откатываем оптимистичное удаление, если запрос не прошёл
                         } finally {
                           setDeletingPaymentId(null);
                         }
                       }}
                     >
-                      <X size={14} strokeWidth={1.5} />
+                      <Trash2 size={14} strokeWidth={1.5} />
                     </button>
                   </td>
                 </tr>
@@ -300,6 +308,9 @@ type InvoiceItem = {
   unit_price_kopecks: number; unit_price_display: string; amount_display: string;
 };
 
+// Товары/услуги по счёту — основа учёта закупок (количество, цена за
+// единицу; дальше по ним считается динамика цены и сезонность на странице
+// «Аналитика»). Необязательно — счёт можно вести и одной суммой.
 function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: InvoiceItem[]; onChanged: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -342,51 +353,48 @@ function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: 
   };
 
   return (
-    <>
-      <div className="section-title">Товары/услуги</div>
-      <div className="card blueprint" style={{ position: 'relative', marginBottom: 20, padding: 0 }}>
-        <Corners />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 18px', borderBottom: '1px solid var(--color-divider)' }}>
-          <span />
-          <button type="button" className="btn btn-secondary blueprint btn-sm" onClick={() => setShowForm(s => !s)}>
-            <Corners />{showForm ? <><X size={13} strokeWidth={1.5} /> Отмена</> : <><Plus size={13} strokeWidth={1.5} /> Добавить позицию</>}
-          </button>
-        </div>
-
-        {showForm && (
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-divider)' }}>
-            <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <input className="input" style={{ flex: 3, minWidth: 160 }} placeholder="Наименование" value={name} onChange={e => setName(e.target.value)} autoFocus />
-              <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Кол-во" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} />
-              <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Ед." value={unit} onChange={e => setUnit(e.target.value)} />
-              <input className="input" style={{ flex: 1, minWidth: 90 }} placeholder="Цена, ₽" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Сохраняем…' : 'Добавить'}</button>
-            </form>
-            {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
-          </div>
-        )}
-
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr><th>Наименование</th><th style={{ width: 70 }}>Кол-во</th><th style={{ width: 60 }}>Ед.</th><th style={{ width: 100 }}>Цена</th><th style={{ width: 110 }}>Сумма</th><th style={{ width: 44 }} /></tr>
-            </thead>
-            <tbody>
-              {items.map(it => (
-                <tr key={it.id}>
-                  <td>{it.name}</td>
-                  <td>{it.quantity}</td>
-                  <td>{it.unit ?? '—'}</td>
-                  <td>{it.unit_price_display}</td>
-                  <td style={{ fontWeight: 600 }}>{it.amount_display}</td>
-                  <td><button type="button" className="btn btn-ghost btn-icon" onClick={() => remove(it.id)}><X size={14} strokeWidth={1.5} /></button></td>
-                </tr>
-              ))}
-              {!items.length && <tr><td colSpan={6} className="empty-state">Позиции не добавлены</td></tr>}
-            </tbody>
-          </table>
-        </div>
+    <div className="card blueprint">
+      <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+      <div className="card-header">
+        <span>Товары/услуги</span>
+        <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(s => !s)}>
+          {showForm ? <><X size={14} strokeWidth={1.5} /> Отмена</> : <><Plus size={14} strokeWidth={1.5} /> Добавить позицию</>}
+        </button>
       </div>
-    </>
+
+      {showForm && (
+        <div className="card-body" style={{ borderTop: '1px solid var(--color-divider)' }}>
+          <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <input className="input" style={{ flex: 3, minWidth: 160 }} placeholder="Наименование" value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Кол-во" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} />
+            <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Ед." value={unit} onChange={e => setUnit(e.target.value)} />
+            <input className="input" style={{ flex: 1, minWidth: 90 }} placeholder="Цена, ₽" inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)} />
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Сохраняем…' : 'Добавить'}</button>
+          </form>
+          {error && <div className="error-box" style={{ marginTop: 10 }}>{error}</div>}
+        </div>
+      )}
+
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Цена</th><th>Сумма</th><th></th></tr>
+          </thead>
+          <tbody>
+            {items.map(it => (
+              <tr key={it.id}>
+                <td>{it.name}</td>
+                <td>{it.quantity}</td>
+                <td>{it.unit ?? '—'}</td>
+                <td>{it.unit_price_display}</td>
+                <td style={{ fontWeight: 600 }}>{it.amount_display}</td>
+                <td><button className="btn btn-icon btn-secondary" onClick={() => remove(it.id)}><Trash2 size={14} strokeWidth={1.5} /></button></td>
+              </tr>
+            ))}
+            {!items.length && <tr><td colSpan={6} className="empty-state">Позиции не добавлены</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

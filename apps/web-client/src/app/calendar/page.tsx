@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { api, STATUS_LABEL } from '@/lib/api';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { api } from '@/lib/api';
 
 type Invoice = {
   id: string; number: string | null; counterparty_name: string | null;
@@ -29,9 +30,7 @@ function buildGrid(year: number, month: number): (Date | null)[][] {
   return weeks;
 }
 
-function Corners() {
-  return (<><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /></>);
-}
+const OVERDUE_STATUSES = new Set(['OVERDUE', 'DISPUTED']);
 
 export default function CalendarPage() {
   const now = new Date();
@@ -76,46 +75,58 @@ export default function CalendarPage() {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Календарь оплат</h1>
+          <div className="page-title">Календарь оплат</div>
           <div className="page-sub">Счета по сроку оплаты — ничего не пропустите</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(-1)}>← Пред.</button>
-          <div style={{ fontFamily: 'var(--font-heading)', fontSize: 15, textTransform: 'uppercase', minWidth: 170, textAlign: 'center' }}>{MONTH_NAMES[month]} {year}</div>
-          <button className="btn btn-ghost btn-sm" onClick={() => changeMonth(1)}>След. →</button>
+          <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(-1)} aria-label="Предыдущий месяц"><ChevronLeft size={16} strokeWidth={1.5} /></button>
+          <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, minWidth: 160, textAlign: 'center' }}>{MONTH_NAMES[month]} {year}</div>
+          <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(1)} aria-label="Следующий месяц"><ChevronRight size={16} strokeWidth={1.5} /></button>
         </div>
       </div>
 
       {loading ? (
-        <div className="loading">Загрузка...</div>
+        <div className="loading">Загрузка…</div>
       ) : error ? (
         <div className="error-box"><strong>Ошибка:</strong> {error}</div>
       ) : (
-        <div className="card blueprint" style={{ position: 'relative', padding: 0 }}>
-          <Corners />
-          <div className="cal-weekdays">
-            {WEEKDAYS.map(w => <div key={w}>{w}</div>)}
+        <div className="card blueprint" style={{ padding: 0 }}>
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
+            {WEEKDAYS.map(w => (
+              <div key={w} className="text-muted" style={{ padding: '8px 6px', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>{w}</div>
+            ))}
           </div>
           {weeks.map((week, wi) => (
-            <div className="cal-week" key={wi}>
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
               {week.map((day, di) => {
                 const key = day ? ymd(day) : '';
                 const dayInvoices = day ? (byDay.get(key) ?? []) : [];
                 const isToday = key === todayKey;
                 return (
-                  <div key={di} className={`cal-day${isToday ? ' today' : ''}${!day ? ' dim' : ''}`}>
+                  <div key={di} style={{
+                    minHeight: 96, padding: 6, borderRight: di < 6 ? '1px solid var(--color-divider)' : undefined,
+                    background: isToday ? 'var(--color-accent-100)' : undefined, opacity: day ? 1 : 0.4,
+                  }}>
                     {day && (
                       <>
-                        <div className="cal-daynum">{day.getDate()}</div>
-                        {dayInvoices.slice(0, 4).map(inv => (
-                          <a key={inv.id} href={`/invoices/${inv.id}`}
-                            className={`cal-chip${inv.status === 'OVERDUE' || inv.status === 'DISPUTED' ? ' overdue' : ''}`}
-                            title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display} · ${STATUS_LABEL[inv.status] ?? inv.status}`}>
-                            №{inv.number ?? '—'} · {inv.amount_display}
-                          </a>
-                        ))}
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>{day.getDate()}</div>
+                        {dayInvoices.slice(0, 4).map(inv => {
+                          const overdue = OVERDUE_STATUSES.has(inv.status);
+                          return (
+                            <a key={inv.id} href={`/invoices/${inv.id}`} title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display}`}
+                              style={{
+                                display: 'block', fontSize: 11, marginBottom: 3, padding: '2px 4px',
+                                border: `1px solid ${overdue ? 'var(--color-accent-700)' : 'var(--color-divider)'}`,
+                                color: overdue ? 'var(--color-accent-700)' : 'inherit',
+                                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                              №{inv.number ?? '—'} · {inv.amount_display}
+                            </a>
+                          );
+                        })}
                         {dayInvoices.length > 4 && (
-                          <div style={{ fontSize: 11, color: 'var(--color-neutral-700)' }}>+{dayInvoices.length - 4} ещё</div>
+                          <div className="text-muted" style={{ fontSize: 11 }}>+{dayInvoices.length - 4} ещё</div>
                         )}
                       </>
                     )}
