@@ -130,7 +130,7 @@ export default function PaymentsPage() {
         {loading ? (
           <div className="loading">Загрузка…</div>
         ) : !error && (
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table className="table">
               <thead>
                 <tr>
@@ -145,11 +145,11 @@ export default function PaymentsPage() {
               <tbody>
                 {payments.map(p => (
                   <tr key={p.id}>
-                    <td className="text-muted" style={{ fontSize: 12 }}>{formatDateOnly(p.payment_date)}</td>
-                    <td className="mono text-muted">#{p.invoice_number}</td>
-                    <td style={{ fontWeight: 500 }}>{p.counterparty_name || '—'}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--color-accent-700)' }}>{p.amount_display}</td>
-                    <td className="text-muted" style={{ fontSize: 12 }}>{p.reference || '—'}</td>
+                    <td data-label="Дата" className="text-muted" style={{ fontSize: 12 }}>{formatDateOnly(p.payment_date)}</td>
+                    <td data-label="Счёт" className="mono text-muted">#{p.invoice_number}</td>
+                    <td data-label="Контрагент" style={{ fontWeight: 500 }}>{p.counterparty_name || '—'}</td>
+                    <td data-label="Сумма" style={{ fontWeight: 600, color: 'var(--color-accent-700)' }}>{p.amount_display}</td>
+                    <td data-label="ПП" className="text-muted" style={{ fontSize: 12 }}>{p.reference || '—'}</td>
                     <td>
                       <button
                         type="button" className="btn btn-icon btn-secondary" disabled={deletingId === p.id}

@@ -208,7 +208,7 @@ export default function InvoiceDetailPage() {
           </label>
         </div>
         {docError && <div className="error-box">{docError}</div>}
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
               <tr>
@@ -221,9 +221,9 @@ export default function InvoiceDetailPage() {
             <tbody>
               {docs.map(d => (
                 <tr key={d.id}>
-                  <td style={{ fontWeight: 500 }}>{d.filename}</td>
-                  <td className="text-muted">{fmtSize(d.size_bytes)}</td>
-                  <td className="text-muted" style={{ fontSize: 12 }}>{new Date(d.created_at).toLocaleString('ru-RU')}</td>
+                  <td data-label="Файл" style={{ fontWeight: 500 }}>{d.filename}</td>
+                  <td data-label="Размер" className="text-muted">{fmtSize(d.size_bytes)}</td>
+                  <td data-label="Загружен" className="text-muted" style={{ fontSize: 12 }}>{new Date(d.created_at).toLocaleString('ru-RU')}</td>
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => api.documents.download(d.id, d.filename)}>
                       <Download size={14} strokeWidth={1.5} /> Скачать
@@ -247,7 +247,7 @@ export default function InvoiceDetailPage() {
       <div className="card blueprint" style={{ marginTop: 'var(--space-4)' }}>
         <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
         <div className="card-header">История платежей</div>
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
               <tr>
@@ -261,10 +261,10 @@ export default function InvoiceDetailPage() {
             <tbody>
               {(inv.payments as Payment[] ?? []).map(p => (
                 <tr key={p.id}>
-                  <td>{new Date(p.payment_date).toLocaleDateString('ru-RU')}</td>
-                  <td style={{ fontWeight: 600 }}>{p.amount_display}</td>
-                  <td>{METHOD_LABEL[p.method] ?? p.method}</td>
-                  <td className="text-muted">{p.reference ?? '—'}</td>
+                  <td data-label="Дата">{new Date(p.payment_date).toLocaleDateString('ru-RU')}</td>
+                  <td data-label="Сумма" style={{ fontWeight: 600 }}>{p.amount_display}</td>
+                  <td data-label="Способ">{METHOD_LABEL[p.method] ?? p.method}</td>
+                  <td data-label="Референс" className="text-muted">{p.reference ?? '—'}</td>
                   <td style={{ display: 'flex', gap: 6 }}>
                     <a className="btn btn-ghost btn-sm" href={`/invoices/${id}/receipt?payment=${p.id}`} target="_blank" rel="noreferrer">Акт</a>
                     <button
@@ -375,7 +375,7 @@ function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: 
         </div>
       )}
 
-      <div className="table-wrap">
+      <div className="table-wrap responsive-table">
         <table className="table">
           <thead>
             <tr><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Цена</th><th>Сумма</th><th></th></tr>
@@ -383,12 +383,12 @@ function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: 
           <tbody>
             {items.map(it => (
               <tr key={it.id}>
-                <td>{it.name}</td>
-                <td>{it.quantity}</td>
-                <td>{it.unit ?? '—'}</td>
-                <td>{it.unit_price_display}</td>
-                <td style={{ fontWeight: 600 }}>{it.amount_display}</td>
-                <td><button className="btn btn-icon btn-secondary" onClick={() => remove(it.id)}><Trash2 size={14} strokeWidth={1.5} /></button></td>
+                <td data-label="Наименование">{it.name}</td>
+                <td data-label="Кол-во">{it.quantity}</td>
+                <td data-label="Ед.">{it.unit ?? '—'}</td>
+                <td data-label="Цена">{it.unit_price_display}</td>
+                <td data-label="Сумма" style={{ fontWeight: 600 }}>{it.amount_display}</td>
+                <td><button className="btn btn-icon btn-secondary" onClick={() => remove(it.id)} aria-label={`Удалить позицию «${it.name}»`}><Trash2 size={14} strokeWidth={1.5} /></button></td>
               </tr>
             ))}
             {!items.length && <tr><td colSpan={6} className="empty-state">Позиции не добавлены</td></tr>}

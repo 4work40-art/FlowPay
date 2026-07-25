@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, ArrowUpRight, ShieldCheck, CircleAlert, CalendarClock, ArrowRight, Square } from 'lucide-react';
+import { RefreshCw, ArrowUpRight, ShieldCheck, CircleAlert, CalendarClock, ArrowRight, Square, CheckSquare, X } from 'lucide-react';
 import { api, STATUS_LABEL, ROLE_LABEL, PLAN_LABEL, formatDateOnly } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 
@@ -24,12 +24,20 @@ function statusTagClass(status: string) {
   return `tag status-${status}`;
 }
 
+const ONBOARDING_DISMISS_KEY = 'sk_onboarding_dismissed';
+
 export default function DashboardPage() {
   const [summary,  setSummary]  = useState<any>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [hasCounterparty, setHasCounterparty] = useState(false);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState('');
   const [acting,   setActing]   = useState<string | null>(null);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') setOnboardingDismissed(localStorage.getItem(ONBOARDING_DISMISS_KEY) === '1');
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -37,16 +45,23 @@ export default function DashboardPage() {
     Promise.all([
       api.dashboard.summary(),
       api.invoices.list({ limit: '10' }),
+      api.counterparties.list(),
     ])
-      .then(([s, inv]) => {
+      .then(([s, inv, cp]) => {
         setSummary(s.data);
         setInvoices(inv.data?.items ?? []);
+        setHasCounterparty((cp.data?.items?.length ?? 0) > 0);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const dismissOnboarding = () => {
+    if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DISMISS_KEY, '1');
+    setOnboardingDismissed(true);
+  };
 
   const doTransition = async (invoiceId: string, transition: string) => {
     setActing(invoiceId);
@@ -91,19 +106,24 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {summary?.total_invoices === 0 && (
-        <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
+      {!onboardingDismissed && !(summary?.total_invoices > 0 && hasCounterparty) && (
+        <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }} role="region" aria-label="Первые шаги">
           <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-          <div className="card-title">Первые шаги в Счёт&amp;Контроль</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
-            <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Square size={15} strokeWidth={1.5} /> Загрузить первый счёт
+          <div className="card-header">
+            <span className="card-title" style={{ margin: 0 }}>Первые шаги в Счёт&amp;Контроль</span>
+            <button className="btn btn-icon btn-secondary" onClick={dismissOnboarding} aria-label="Закрыть подсказку о первых шагах" title="Закрыть">
+              <X size={14} strokeWidth={1.5} />
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14, padding: 'var(--space-4)' }}>
+            <a href="/counterparties" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: hasCounterparty ? 'line-through' : undefined, color: hasCounterparty ? 'var(--color-neutral-700)' : undefined }}>
+              {hasCounterparty ? <CheckSquare size={15} strokeWidth={1.5} /> : <Square size={15} strokeWidth={1.5} />} Добавить первого контрагента
             </a>
-            <a href="/counterparties" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Square size={15} strokeWidth={1.5} /> Добавить контрагента
+            <a href="/invoices/new" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: summary?.total_invoices > 0 ? 'line-through' : undefined, color: summary?.total_invoices > 0 ? 'var(--color-neutral-700)' : undefined }}>
+              {summary?.total_invoices > 0 ? <CheckSquare size={15} strokeWidth={1.5} /> : <Square size={15} strokeWidth={1.5} />} Создать или загрузить первый счёт
             </a>
             <a href="/settings" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Square size={15} strokeWidth={1.5} /> Пригласить коллегу (бухгалтера или ассистента)
+              <Square size={15} strokeWidth={1.5} /> Настроить напоминания об оплате (необязательно)
             </a>
           </div>
         </div>
@@ -162,7 +182,7 @@ export default function DashboardPage() {
       <div className="card blueprint">
         <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
 
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
               <tr>
@@ -176,10 +196,10 @@ export default function DashboardPage() {
             <tbody>
               {actionable.map(inv => (
                 <tr key={inv.id}>
-                  <td className="mono text-muted">#{inv.number}</td>
-                  <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
-                  <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
-                  <td>
+                  <td className="mono text-muted" data-label="№">#{inv.number}</td>
+                  <td data-label="Контрагент" style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
+                  <td data-label="Сумма" style={{ fontWeight: 600 }}>{inv.amount_display}</td>
+                  <td data-label="Статус">
                     <span className={statusTagClass(inv.status)}>{STATUS_LABEL[inv.status] ?? inv.status}</span>
                   </td>
                   <td>
