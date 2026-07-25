@@ -103,7 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" className="fp-avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`}>
             {initials}
           </Link>
-          <button className="fp-item" onClick={logout} title="Выйти" aria-label="Выйти">
+          <button className="fp-item fp-item-logout" onClick={logout} title="Выйти" aria-label="Выйти">
             <LogOut strokeWidth={1.5} />
           </button>
         </div>

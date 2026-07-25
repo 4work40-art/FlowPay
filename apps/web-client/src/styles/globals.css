@@ -226,6 +226,28 @@ textarea.input { min-height: 90px; resize: vertical; }
 .avatar-name { font-size: 11px; font-weight: 500; }
 .avatar-role { display: none; }
 
+.fp-item-logout {
+  position: relative;
+  color: var(--tag-pink-text);
+  background: var(--tag-pink-bg);
+}
+.fp-item-logout:hover, .fp-item-logout:focus-visible {
+  color: #fff;
+  background: var(--tag-pink-text);
+}
+.fp-item-logout::after {
+  content: "Выйти";
+  position: absolute; left: 100%; top: 50%; transform: translate(8px, -50%);
+  white-space: nowrap; font: 600 12px var(--font-body); letter-spacing: 0.01em;
+  background: #26243c; color: #fff; padding: 5px 10px; border-radius: 8px;
+  opacity: 0; pointer-events: none; transition: opacity .12s ease;
+  box-shadow: var(--shadow-card-sm);
+}
+.fp-item-logout:hover::after, .fp-item-logout:focus-visible::after { opacity: 1; }
+@media (max-width: 768px) {
+  .fp-item-logout::after { display: none; }
+}
+
 .main-content { flex: 1; overflow-y: auto; padding: var(--space-6); }
 
 @media (max-width: 768px) {
