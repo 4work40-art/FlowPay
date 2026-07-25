@@ -64,19 +64,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="fp-rail">
-        <div className="fp-brand" aria-hidden="true">+</div>
-        <nav className="fp-nav" aria-label="Главная навигация">
+        <div className="fp-brand" aria-hidden="true" />
+        <nav className="fp-nav" aria-label="Основная навигация">
           {NAV.map(n => {
             const Icon = n.icon;
             const active = pathname.startsWith(n.href);
             return (
-              <Link key={n.href} href={n.href} className={`fp-item${active ? ' active' : ''}`} title={n.label} aria-label={n.label} aria-current={active ? 'page' : undefined}>
+              <Link
+                key={n.href}
+                href={n.href}
+                className={`fp-item${active ? ' active' : ''}`}
+                title={n.label}
+                aria-label={n.label}
+                aria-current={active ? 'page' : undefined}
+              >
                 <Icon strokeWidth={1.5} />
               </Link>
             );
           })}
           {user?.is_platform_admin && (
-            <Link href="/admin" className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`} title="Кабинет создателя" aria-label="Кабинет создателя">
+            <Link
+              href="/admin"
+              className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`}
+              title="Кабинет создателя"
+              aria-label="Кабинет создателя"
+              aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
+            >
               <Crown strokeWidth={1.5} />
             </Link>
           )}
@@ -87,7 +100,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             className="fp-item" title="Поддержка" aria-label="Поддержка">
             <LifeBuoy strokeWidth={1.5} />
           </a>
-          <Link href="/settings" className="fp-avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`} aria-label={`Профиль: ${user?.name ?? '—'}, настройки`}>
+          <Link href="/settings" className="fp-avatar" title={`${user?.name ?? '—'} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role} · ${PLAN_LABEL[user?.plan ?? ''] ?? user?.plan}`}>
             {initials}
           </Link>
           <button className="fp-item" onClick={logout} title="Выйти" aria-label="Выйти">
