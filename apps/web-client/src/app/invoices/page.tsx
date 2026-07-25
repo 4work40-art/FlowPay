@@ -5,9 +5,7 @@ import { api, STATUS_LABEL, STATUS_DESCRIPTION, formatDateOnly } from '@/lib/api
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 function statusTagClass(status: string) {
-  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
-  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
-  return 'tag tag-neutral';
+  return `tag status-${status}`;
 }
 
 const FILTERS: [string, string][] = [
