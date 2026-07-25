@@ -260,6 +260,45 @@ tr.clickable { cursor: pointer; }
 tr.clickable:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .table-footer { padding: var(--space-3) 0 0; font-size: 12px; color: var(--color-neutral-700); display: flex; align-items: center; justify-content: space-between; }
 
+/* — responsive tables (список счетов/платежей, карточка счёта) —
+   На мобильном классическая таблица со скроллом вбок неудобна при работе
+   одной рукой — превращаем строки в вертикальные карточки: каждая ячейка
+   подписывается сама (через data-label на <td>), thead прячется. Применяется
+   только к таблицам с классом .responsive-table. */
+@media (max-width: 640px) {
+  .table-wrap.responsive-table table,
+  .table-wrap.responsive-table thead,
+  .table-wrap.responsive-table tbody,
+  .table-wrap.responsive-table tr,
+  .table-wrap.responsive-table td {
+    display: block;
+    width: 100%;
+  }
+  .table-wrap.responsive-table thead { position: absolute; left: -9999px; top: -9999px; }
+  .table-wrap.responsive-table tr { border-bottom: 1px solid var(--color-divider); padding: var(--space-3) var(--space-2); }
+  .table-wrap.responsive-table tr:last-child { border-bottom: none; }
+  .table-wrap.responsive-table td {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 5px 0; border-bottom: none; text-align: right; white-space: normal;
+  }
+  .table-wrap.responsive-table td[data-label]::before {
+    content: attr(data-label); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--color-neutral-700); text-align: left; flex-shrink: 0;
+  }
+  .table-wrap.responsive-table td:not([data-label]) { justify-content: flex-start; }
+  .table-wrap.responsive-table td.empty-state { text-align: center; padding: 24px 0; }
+  .table-wrap.responsive-table td .btn-sm { padding: 8px 12px; font-size: 12.5px; }
+}
+
+/* — payment calendar: сетка по неделям на десктопе/планшете, список по дням
+   на мобильном (сжатая копия недельной сетки на маленьком экране нечитаема
+   и не годится для работы одной рукой). */
+.calendar-list { display: none; }
+@media (max-width: 640px) {
+  .calendar-grid { display: none; }
+  .calendar-list { display: block; }
+}
+
 /* — dialog — */
 .dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent); z-index: 50; }
 .dialog { width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: 0; background: var(--color-bg); box-shadow: var(--shadow-lg); border: 1px solid var(--color-divider); }

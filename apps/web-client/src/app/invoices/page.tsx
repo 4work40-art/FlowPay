@@ -132,7 +132,7 @@ export default function InvoicesPage() {
         {loading ? (
           <div className="loading">Загрузка…</div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table className="table">
               <thead>
                 <tr>
@@ -149,11 +149,11 @@ export default function InvoicesPage() {
                     aria-label={`Счёт №${inv.number}, ${inv.counterparty_name || '—'}, ${inv.amount_display}`}
                     onClick={() => window.location.href = `/invoices/${inv.id}`}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.location.href = `/invoices/${inv.id}`; } }}>
-                    <td className="mono text-muted">#{inv.number}</td>
-                    <td style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
-                    <td style={{ fontWeight: 600 }}>{inv.amount_display}</td>
-                    <td className="text-muted" style={{ fontSize: 12 }}>{formatDateOnly(inv.due_date)}</td>
-                    <td>
+                    <td className="mono text-muted" data-label="№">#{inv.number}</td>
+                    <td data-label="Контрагент" style={{ fontWeight: 500 }}>{inv.counterparty_name || '—'}</td>
+                    <td data-label="Сумма" style={{ fontWeight: 600 }}>{inv.amount_display}</td>
+                    <td data-label="Срок оплаты" className="text-muted" style={{ fontSize: 12 }}>{formatDateOnly(inv.due_date)}</td>
+                    <td data-label="Статус">
                       <span className={statusTagClass(inv.status)} title={STATUS_DESCRIPTION[inv.status] ?? ''}>
                         {STATUS_LABEL[inv.status] ?? inv.status}
                       </span>

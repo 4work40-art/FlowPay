@@ -90,52 +90,98 @@ export default function CalendarPage() {
       ) : error ? (
         <div className="error-box"><strong>Ошибка:</strong> {error}</div>
       ) : (
-        <div className="card blueprint" style={{ padding: 0 }}>
-          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
-            {WEEKDAYS.map(w => (
-              <div key={w} className="text-muted" style={{ padding: '8px 6px', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>{w}</div>
+        <>
+          {/* Десктоп/планшет — сетка по неделям; на мобильном скрывается CSS
+              (см. .calendar-grid в globals.css) в пользу списка по дням ниже —
+              сжатая копия недельной сетки на маленьком экране нечитаема и не
+              годится для работы одной рукой. */}
+          <div className="card blueprint calendar-grid" style={{ padding: 0 }}>
+            <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
+              {WEEKDAYS.map(w => (
+                <div key={w} className="text-muted" style={{ padding: '8px 6px', fontSize: 12.5, fontWeight: 600, textAlign: 'center' }}>{w}</div>
+              ))}
+            </div>
+            {weeks.map((week, wi) => (
+              <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
+                {week.map((day, di) => {
+                  const key = day ? ymd(day) : '';
+                  const dayInvoices = day ? (byDay.get(key) ?? []) : [];
+                  const isToday = key === todayKey;
+                  return (
+                    <div key={di} style={{
+                      minHeight: 96, padding: 6, borderRight: di < 6 ? '1px solid var(--color-divider)' : undefined,
+                      background: isToday ? 'var(--color-accent-100)' : undefined, opacity: day ? 1 : 0.4,
+                    }}>
+                      {day && (
+                        <>
+                          <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>{day.getDate()}</div>
+                          {dayInvoices.slice(0, 4).map(inv => {
+                            const overdue = OVERDUE_STATUSES.has(inv.status);
+                            return (
+                              <a key={inv.id} href={`/invoices/${inv.id}`} title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display}`}
+                                style={{
+                                  display: 'block', fontSize: 11, marginBottom: 3, padding: '2px 4px',
+                                  border: `1px solid ${overdue ? 'var(--color-accent-700)' : 'var(--color-divider)'}`,
+                                  color: overdue ? 'var(--color-accent-700)' : 'inherit',
+                                  textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}>
+                                №{inv.number ?? '—'} · {inv.amount_display}
+                              </a>
+                            );
+                          })}
+                          {dayInvoices.length > 4 && (
+                            <div className="text-muted" style={{ fontSize: 11 }}>+{dayInvoices.length - 4} ещё</div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             ))}
           </div>
-          {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-divider)' }}>
-              {week.map((day, di) => {
-                const key = day ? ymd(day) : '';
-                const dayInvoices = day ? (byDay.get(key) ?? []) : [];
+
+          {/* Мобильный список по дням — только дни месяца, где есть счета со
+              сроком оплаты, отсортированные по дате. */}
+          <div className="calendar-list">
+            {Array.from(byDay.keys()).sort().length === 0 ? (
+              <div className="card blueprint"><i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" /><div className="empty-state">В этом месяце сроков оплаты нет</div></div>
+            ) : (
+              Array.from(byDay.keys()).sort().map(key => {
+                const dayInvoices = byDay.get(key)!;
                 const isToday = key === todayKey;
+                const d = new Date(key + 'T00:00:00');
                 return (
-                  <div key={di} style={{
-                    minHeight: 96, padding: 6, borderRight: di < 6 ? '1px solid var(--color-divider)' : undefined,
-                    background: isToday ? 'var(--color-accent-100)' : undefined, opacity: day ? 1 : 0.4,
-                  }}>
-                    {day && (
-                      <>
-                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>{day.getDate()}</div>
-                        {dayInvoices.slice(0, 4).map(inv => {
-                          const overdue = OVERDUE_STATUSES.has(inv.status);
-                          return (
-                            <a key={inv.id} href={`/invoices/${inv.id}`} title={`№${inv.number ?? '—'} · ${inv.counterparty_name ?? 'без контрагента'} · ${inv.amount_display}`}
-                              style={{
-                                display: 'block', fontSize: 11, marginBottom: 3, padding: '2px 4px',
-                                border: `1px solid ${overdue ? 'var(--color-accent-700)' : 'var(--color-divider)'}`,
-                                color: overdue ? 'var(--color-accent-700)' : 'inherit',
-                                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              }}>
-                              №{inv.number ?? '—'} · {inv.amount_display}
-                            </a>
-                          );
-                        })}
-                        {dayInvoices.length > 4 && (
-                          <div className="text-muted" style={{ fontSize: 11 }}>+{dayInvoices.length - 4} ещё</div>
-                        )}
-                      </>
-                    )}
+                  <div key={key} className="card blueprint" style={{ marginBottom: 10 }}>
+                    <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+                    <div className="card-header" style={{ background: isToday ? 'var(--color-accent-100)' : undefined }}>
+                      <span>{d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' })}</span>
+                      {isToday && <span className="text-muted" style={{ fontSize: 11 }}>Сегодня</span>}
+                    </div>
+                    <div>
+                      {dayInvoices.map(inv => {
+                        const overdue = OVERDUE_STATUSES.has(inv.status);
+                        return (
+                          <a key={inv.id} href={`/invoices/${inv.id}`}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                              padding: '12px', borderBottom: '1px solid var(--color-divider)', textDecoration: 'none', color: 'inherit',
+                            }}>
+                            <span style={{ fontSize: 13 }}>№{inv.number ?? '—'} · {inv.counterparty_name ?? 'без контрагента'}</span>
+                            <span style={{ fontWeight: 600, color: overdue ? 'var(--color-accent-700)' : 'inherit', flexShrink: 0 }}>
+                              {inv.amount_display}
+                            </span>
+                          </a>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
-              })}
-            </div>
-          ))}
-        </div>
+              })
+            )}
+          </div>
+        </>
       )}
     </div>
   );
