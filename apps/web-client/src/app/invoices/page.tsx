@@ -5,9 +5,7 @@ import { api, STATUS_LABEL, STATUS_DESCRIPTION, formatDateOnly } from '@/lib/api
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 function statusTagClass(status: string) {
-  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
-  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
-  return 'tag tag-neutral';
+  return `tag status-${status}`;
 }
 
 const FILTERS: [string, string][] = [
@@ -136,11 +134,11 @@ export default function InvoicesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 70 }} scope="col">№</th>
-                  <th scope="col">Контрагент</th>
-                  <th style={{ width: 150 }} scope="col">Сумма</th>
-                  <th style={{ width: 130 }} scope="col">Срок оплаты</th>
-                  <th style={{ width: 150 }} scope="col">Статус</th>
+                  <th style={{ width: 70 }}>№</th>
+                  <th>Контрагент</th>
+                  <th style={{ width: 150 }}>Сумма</th>
+                  <th style={{ width: 130 }}>Срок оплаты</th>
+                  <th style={{ width: 150 }}>Статус</th>
                 </tr>
               </thead>
               <tbody>

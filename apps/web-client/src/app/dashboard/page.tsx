@@ -21,9 +21,7 @@ type Invoice = {
 const NEEDS_ACTION = new Set(['CREATED', 'UNDER_CONTROL', 'OVERDUE', 'PARTIALLY_PAID', 'DISPUTED']);
 
 function statusTagClass(status: string) {
-  if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
-  if (status === 'PAID' || status === 'PARTIALLY_PAID' || status === 'PAYMENT_PENDING') return 'tag tag-outline';
-  return 'tag tag-neutral';
+  return `tag status-${status}`;
 }
 
 const ONBOARDING_DISMISS_KEY = 'sk_onboarding_dismissed';
@@ -148,15 +146,19 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <div className="alert-card blueprint" role="alert">
             <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-            <div className="alert-title"><CircleAlert size={13} strokeWidth={1.5} /> Просроченные</div>
-            <div className="alert-value">{summary?.overdue_debt?.display ?? '—'}</div>
-            <div className="alert-sub">{summary?.overdue_debt?.count ?? 0} счетов · требуют внимания</div>
+            <div>
+              <div className="alert-title"><CircleAlert size={13} strokeWidth={1.5} /> Просроченные</div>
+              <div className="alert-value accent-pink">{summary?.overdue_debt?.display ?? '—'}</div>
+            </div>
+            <span className="alert-count-pill">{summary?.overdue_debt?.count ?? 0} счетов</span>
           </div>
           <div className="alert-card blueprint">
             <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-            <div className="alert-title"><CalendarClock size={13} strokeWidth={1.5} /> На оплату (7 дней)</div>
-            <div className="alert-value">{summary?.due_7_days?.display ?? '—'}</div>
-            <div className="alert-sub">{summary?.due_7_days?.count ?? 0} счетов · срок истекает</div>
+            <div>
+              <div className="alert-title"><CalendarClock size={13} strokeWidth={1.5} /> На оплату (7 дней)</div>
+              <div className="alert-value">{summary?.due_7_days?.display ?? '—'}</div>
+            </div>
+            <span className="alert-count-pill blue">{summary?.due_7_days?.count ?? 0} счётов</span>
           </div>
           <div className="trust-card blueprint" style={{ marginBottom: 0, flex: 1 }} aria-label={`Trust Score ${summary?.trust_score ?? 50} из 100`}>
             <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
@@ -176,21 +178,19 @@ export default function DashboardPage() {
       </div>
 
       {/* Требуют действия */}
+      <div className="section-label">Требуют действия</div>
       <div className="card blueprint">
         <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-        <div className="card-header">
-          <span>Требуют действия</span>
-        </div>
 
         <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
               <tr>
-                <th style={{ width: 70 }} scope="col">№</th>
-                <th scope="col">Контрагент</th>
-                <th style={{ width: 140 }} scope="col">Сумма</th>
-                <th style={{ width: 140 }} scope="col">Статус</th>
-                <th style={{ width: 220 }} scope="col"></th>
+                <th style={{ width: 70 }}>№</th>
+                <th>Контрагент</th>
+                <th style={{ width: 140 }}>Сумма</th>
+                <th style={{ width: 140 }}>Статус</th>
+                <th style={{ width: 220 }}></th>
               </tr>
             </thead>
             <tbody>
