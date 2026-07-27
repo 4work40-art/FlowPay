@@ -199,24 +199,39 @@ textarea.input { min-height: 90px; resize: vertical; }
   display: flex; flex-direction: column; align-items: center; padding: 20px 0;
   background: rgba(255,255,255,.55); backdrop-filter: blur(20px);
   box-shadow: var(--shadow-nav); position: relative; z-index: 2;
+  overflow: hidden; /* дочерний .fp-nav сам скроллится — эта колонка не должна расти выше экрана */
 }
 .fp-brand {
-  width: 44px; height: 44px; position: relative; margin: 0 0 28px; flex-shrink: 0;
+  width: 44px; height: 44px; position: relative; margin: 0 0 20px; flex-shrink: 0;
   display: block; color: transparent; font-size: 0;
 }
 .fp-brand::before, .fp-brand::after { content: ""; position: absolute; width: 32px; height: 32px; border-radius: 10px; }
 .fp-brand::before { top: 5px; left: 5px; background: #d8d3f7; }
 .fp-brand::after { top: 0; left: 0; background: var(--accent-gradient); box-shadow: 0 8px 16px -6px rgba(109,90,240,.5); }
-.fp-nav, .sidebar-nav { display: flex; flex-direction: column; gap: 10px; flex: 1; width: 100%; align-items: center; padding: 0; }
+/* Пункты навигации сгруппированы (см. fp-nav-group в AppShell.tsx) с тонким
+   разделителем между группами — легче ориентироваться, когда пунктов много.
+   flex:1 + min-height:0 + overflow-y:auto — при нехватке высоты окна (мало
+   вертикального места браузера, масштаб 100% на невысоком экране) сама
+   навигация уходит в прокрутку, а не выталкивает низ (поддержка/профиль/
+   выход) за пределы экрана. */
+.fp-nav, .sidebar-nav {
+  display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0;
+  width: 100%; align-items: center; padding: 4px 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin;
+}
+.fp-nav::-webkit-scrollbar { width: 4px; }
+.fp-nav::-webkit-scrollbar-thumb { background: var(--color-surface-muted-alt); border-radius: 4px; }
+.fp-nav-group { display: flex; flex-direction: column; gap: 4px; align-items: center; width: 100%; flex-shrink: 0; }
+.fp-nav-group + .fp-nav-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--row-divider); }
 .fp-item, .nav-item {
   width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
   color: var(--color-text-secondary); text-decoration: none; border-radius: var(--radius-sm); border: none;
-  background: transparent;
+  background: transparent; flex-shrink: 0;
 }
 .fp-item:hover, .nav-item:hover { color: var(--color-accent); background: var(--color-surface-muted); text-decoration: none; }
 .fp-item.active, .nav-item.active { color: #fff; background: var(--accent-gradient); box-shadow: 0 8px 18px -6px rgba(109,90,240,.55); border-radius: 16px; }
 .fp-item svg, .nav-item svg { width: 20px; height: 20px; }
-.fp-foot, .sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 0 0; width: 100%; }
+.fp-foot, .sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 0; width: 100%; flex-shrink: 0; }
 .fp-avatar, .avatar {
   width: 38px; height: 38px; border-radius: 13px; color: #5a4a8c;
   font: 600 13px var(--font-heading); display: flex; align-items: center; justify-content: center;
@@ -252,9 +267,11 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 @media (max-width: 768px) {
   .app-shell { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-  .sidebar, .fp-rail { width: 100%; flex-direction: row; height: auto; padding: 10px; overflow-x: auto; box-shadow: 0 8px 20px -14px rgba(109,90,190,.25); }
+  .sidebar, .fp-rail { width: 100%; flex-direction: row; height: auto; padding: 10px; overflow-x: auto; overflow-y: visible; box-shadow: 0 8px 20px -14px rgba(109,90,190,.25); }
   .fp-brand { margin: 0 10px 0 0; }
-  .fp-nav, .sidebar-nav { flex-direction: row; flex: 0 0 auto; }
+  .fp-nav, .sidebar-nav { flex-direction: row; flex: 0 0 auto; overflow: visible; }
+  .fp-nav-group { flex-direction: row; width: auto; }
+  .fp-nav-group + .fp-nav-group { margin: 0 0 0 8px; padding: 0 0 0 8px; border-top: none; border-left: 1px solid var(--row-divider); }
   .fp-foot, .sidebar-footer { flex-direction: row; padding: 0 0 0 10px; }
   .main-content { padding: var(--space-3); }
 }

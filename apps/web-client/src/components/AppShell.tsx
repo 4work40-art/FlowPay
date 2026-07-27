@@ -10,16 +10,26 @@ import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 import ReminderPopup from './ReminderPopup';
 
-const NAV = [
-  { href: '/dashboard',      icon: LayoutDashboard, label: 'Дашборд'     },
-  { href: '/invoices',       icon: FileText,        label: 'Счета'       },
-  { href: '/payments',       icon: CreditCard,      label: 'Платежи'     },
-  { href: '/outgoing-invoices', icon: Send,         label: 'Выставить счёт' },
-  { href: '/calendar',       icon: Calendar,        label: 'Календарь'   },
-  { href: '/counterparties', icon: Users,           label: 'Контрагенты' },
-  { href: '/analytics',      icon: BarChart3,       label: 'Аналитика'   },
-  { href: '/billing',        icon: Landmark,        label: 'Тариф'       },
-  { href: '/settings',       icon: Settings,        label: 'Настройки'   },
+// Пункты навигации сгруппированы по смыслу (а не одним сплошным списком) —
+// так рельс навигации легче просматривать и не путаются несвязанные разделы.
+const NAV_GROUPS: { href: string; icon: typeof LayoutDashboard; label: string }[][] = [
+  [
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Дашборд' },
+  ],
+  [
+    { href: '/invoices',          icon: FileText,   label: 'Счета'          },
+    { href: '/outgoing-invoices', icon: Send,       label: 'Выставить счёт' },
+    { href: '/payments',          icon: CreditCard, label: 'Платежи'        },
+    { href: '/calendar',          icon: Calendar,   label: 'Календарь'      },
+  ],
+  [
+    { href: '/counterparties', icon: Users,     label: 'Контрагенты' },
+    { href: '/analytics',      icon: BarChart3, label: 'Аналитика'   },
+  ],
+  [
+    { href: '/billing',  icon: Landmark, label: 'Тариф'     },
+    { href: '/settings', icon: Settings, label: 'Настройки' },
+  ],
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -67,32 +77,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="fp-rail">
         <div className="fp-brand" aria-hidden="true" />
         <nav className="fp-nav" aria-label="Основная навигация">
-          {NAV.map(n => {
-            const Icon = n.icon;
-            const active = pathname.startsWith(n.href);
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={`fp-item${active ? ' active' : ''}`}
-                title={n.label}
-                aria-label={n.label}
-                aria-current={active ? 'page' : undefined}
-              >
-                <Icon strokeWidth={1.5} />
-              </Link>
-            );
-          })}
+          {NAV_GROUPS.map((group, gi) => (
+            <div className="fp-nav-group" key={gi}>
+              {group.map(n => {
+                const Icon = n.icon;
+                const active = pathname.startsWith(n.href);
+                return (
+                  <Link
+                    key={n.href}
+                    href={n.href}
+                    className={`fp-item${active ? ' active' : ''}`}
+                    title={n.label}
+                    aria-label={n.label}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <Icon strokeWidth={1.5} />
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
           {user?.is_platform_admin && (
-            <Link
-              href="/admin"
-              className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`}
-              title="Кабинет создателя"
-              aria-label="Кабинет создателя"
-              aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
-            >
-              <Crown strokeWidth={1.5} />
-            </Link>
+            <div className="fp-nav-group">
+              <Link
+                href="/admin"
+                className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`}
+                title="Кабинет создателя"
+                aria-label="Кабинет создателя"
+                aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
+              >
+                <Crown strokeWidth={1.5} />
+              </Link>
+            </div>
           )}
         </nav>
         <div className="fp-foot">
