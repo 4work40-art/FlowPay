@@ -22,6 +22,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/v1/auth',           require('./routes/auth'));
 app.use('/api/v1/dashboard',      require('./routes/dashboard'));
 app.use('/api/v1/invoices',       require('./routes/invoices'));
+app.use('/api/v1/outgoing-invoices', require('./routes/outgoingInvoices'));
 app.use('/api/v1/payments',       require('./routes/payments'));
 app.use('/api/v1/payments',       require('./routes/bankImport'));
 app.use('/api/v1/counterparties', require('./routes/counterparties'));

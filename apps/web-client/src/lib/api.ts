@@ -139,6 +139,52 @@ export const api = {
     }> => req('/invoices/bulk', { method:'POST', body:JSON.stringify({ items }) }),
   },
 
+  // Выставленные счета — счета, которые организация выставляет своим
+  // клиентам (продавец — сама организация), в отличие от api.invoices
+  // (счета от поставщиков, которые организация оплачивает).
+  outgoingInvoices: {
+    list: (params: Record<string, string> = {}) =>
+      req(`/outgoing-invoices?${new URLSearchParams(params)}`),
+    get: (id: string) => req(`/outgoing-invoices/${id}`),
+    create: (body: {
+      counterparty_id?: string;
+      number?: string;
+      issue_date?: string;
+      due_date?: string;
+      basis?: string;
+      notes?: string;
+      vat_mode?: 'none' | 'rate';
+      vat_rate?: number;
+      items: InvoiceItemInput[];
+    }) => req('/outgoing-invoices', { method:'POST', body:JSON.stringify(body) }),
+    update: (id: string, body: {
+      counterparty_id?: string; issue_date?: string; due_date?: string;
+      basis?: string; notes?: string; vat_mode?: 'none' | 'rate'; vat_rate?: number;
+    }) => req(`/outgoing-invoices/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
+    delete: (id: string) => req(`/outgoing-invoices/${id}`, { method:'DELETE' }),
+    addItem: (id: string, item: InvoiceItemInput) =>
+      req(`/outgoing-invoices/${id}/items`, { method:'POST', body:JSON.stringify(item) }),
+    deleteItem: (id: string, itemId: string) =>
+      req(`/outgoing-invoices/${id}/items/${itemId}`, { method:'DELETE' }),
+    transition: (id: string, transition: 'send' | 'mark_paid' | 'mark_overdue' | 'cancel' | 'reopen') =>
+      req(`/outgoing-invoices/${id}/status`, { method:'PATCH', body:JSON.stringify({ transition }) }),
+    // Excel скачивается как файл — качаем blob и открываем через временный object URL,
+    // тот же приём, что и для /documents/:id/download.
+    downloadExcel: async (id: string, number: string) => {
+      const token = getStoredToken();
+      const res = await fetch(apiUrl(`/outgoing-invoices/${id}/export.xlsx`), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `schet-${number}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    },
+  },
+
   documents: {
     // Распознавание счёта/платёжки из файла (PDF/JPG/PNG) — возвращает
     // черновик полей для проверки, ничего не сохраняет само по себе.
@@ -293,8 +339,11 @@ export const api = {
 
   organization: {
     me: () => req('/organizations/me'),
-    update: (body: { name?: string; inn?: string; kpp?: string }) =>
-      req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
+    update: (body: {
+      name?: string; inn?: string; kpp?: string; address?: string;
+      bank_account?: string; bank_name?: string; bank_bik?: string; bank_corr_account?: string;
+      director_name?: string; accountant_name?: string;
+    }) => req('/organizations/me', { method:'PATCH', body:JSON.stringify(body) }),
     deleteMe: (password: string) =>
       req('/organizations/me', { method:'DELETE', body:JSON.stringify({ password }) }),
     getReminderSettings: (): Promise<{ success: true; data: { reminder_days_before: number } }> =>
@@ -423,4 +472,17 @@ export const STATUS_ICON: Record<string, string> = {
   DISPUTED:        '⚠',
   ARCHIVED:        '📦',
   WRITTEN_OFF:     '✗',
+};
+
+// Статусы выставленного счёта (api.outgoingInvoices) — своя, более короткая
+// шкала контроля, отдельная от статусов входящих счетов (api.invoices).
+export const OUTGOING_STATUS_LABEL: Record<string, string> = {
+  draft: 'Черновик', sent: 'Отправлен', paid: 'Оплачен', overdue: 'Просрочен', cancelled: 'Отменён',
+};
+export const OUTGOING_STATUS_DESCRIPTION: Record<string, string> = {
+  draft: 'Ещё не отправлен клиенту, можно свободно редактировать',
+  sent: 'Отправлен клиенту, ожидает оплаты',
+  paid: 'Оплачен клиентом',
+  overdue: 'Срок оплаты прошёл, а оплата не поступила',
+  cancelled: 'Счёт отменён и не действует',
 };

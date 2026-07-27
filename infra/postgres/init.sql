@@ -6,6 +6,7 @@ CREATE TYPE invoice_status AS ENUM ('CREATED','UNDER_CONTROL','PAYMENT_PENDING',
 CREATE TYPE user_role AS ENUM ('owner','accountant','vendor_admin','readonly');
 CREATE TYPE plan_type AS ENUM ('free','pro','business','enterprise');
 CREATE TYPE pay_method AS ENUM ('bank_transfer','cash','check','online');
+CREATE TYPE outgoing_invoice_status AS ENUM ('draft','sent','paid','overdue','cancelled');
 
 CREATE TABLE organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -16,6 +17,10 @@ CREATE TABLE organizations (
   next_invoice_seq INTEGER NOT NULL DEFAULT 1,
   logo_path VARCHAR(500),
   reminder_days_before INTEGER NOT NULL DEFAULT 3 CHECK (reminder_days_before BETWEEN 0 AND 30),
+  address VARCHAR(500),
+  bank_account VARCHAR(20), bank_name VARCHAR(255), bank_bik VARCHAR(9), bank_corr_account VARCHAR(20),
+  director_name VARCHAR(255), accountant_name VARCHAR(255),
+  next_outgoing_invoice_seq INTEGER NOT NULL DEFAULT 1,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -90,6 +95,46 @@ CREATE INDEX ON invoice_items(org_id);
 CREATE INDEX ON invoice_items(invoice_id);
 CREATE INDEX invoice_items_org_name_idx ON invoice_items(org_id, lower(trim(name)));
 CREATE INDEX ON invoices(org_id,status);
+
+-- Выставленные счета (клиентам организации) — противоположное направление
+-- денег относительно invoices (счета от поставщиков, которые организация
+-- оплачивает). Своя нумерация, свой набор реквизитов (продавец — сама
+-- организация, см. добавленные поля в organizations выше).
+CREATE TABLE outgoing_invoices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  counterparty_id UUID REFERENCES counterparties(id) ON DELETE SET NULL,
+  number VARCHAR(50) NOT NULL,
+  issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  due_date DATE,
+  basis VARCHAR(500),
+  vat_mode VARCHAR(10) NOT NULL DEFAULT 'none' CHECK (vat_mode IN ('none', 'rate')),
+  vat_rate NUMERIC(4,2) NOT NULL DEFAULT 0,
+  amount_kopecks BIGINT NOT NULL DEFAULT 0,
+  vat_kopecks BIGINT NOT NULL DEFAULT 0,
+  status outgoing_invoice_status NOT NULL DEFAULT 'draft',
+  notes VARCHAR(1000),
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, number)
+);
+CREATE INDEX ON outgoing_invoices(org_id);
+CREATE INDEX ON outgoing_invoices(org_id, status);
+
+CREATE TABLE outgoing_invoice_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  outgoing_invoice_id UUID NOT NULL REFERENCES outgoing_invoices(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 1,
+  name VARCHAR(255) NOT NULL,
+  quantity NUMERIC(14,3) NOT NULL CHECK (quantity > 0),
+  unit VARCHAR(50),
+  unit_price_kopecks BIGINT NOT NULL CHECK (unit_price_kopecks > 0),
+  amount_kopecks BIGINT NOT NULL CHECK (amount_kopecks > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON outgoing_invoice_items(outgoing_invoice_id);
 
 CREATE TABLE payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

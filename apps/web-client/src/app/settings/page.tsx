@@ -6,7 +6,12 @@ import { updateToken, clearSession } from '@/lib/auth';
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
-type Org = { id: string; name: string; inn: string | null; kpp: string | null; plan: string };
+type Org = {
+  id: string; name: string; inn: string | null; kpp: string | null; plan: string;
+  address: string | null; bank_account: string | null; bank_name: string | null;
+  bank_bik: string | null; bank_corr_account: string | null;
+  director_name: string | null; accountant_name: string | null;
+};
 type Invite = { id: string; email: string; role: string; expires_at: string; used_at: string | null };
 
 export default function SettingsPage() {
@@ -28,6 +33,20 @@ export default function SettingsPage() {
   const [orgError, setOrgError] = useState('');
   const [orgOk,    setOrgOk]    = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
+
+  // Реквизиты для формы "Счёт на оплату" (см. /outgoing-invoices) — продавец
+  // в этой форме сама организация, поэтому банковские реквизиты и подписанты
+  // нужны отдельно от общих ИНН/КПП выше.
+  const [billingAddress, setBillingAddress] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankBik, setBankBik] = useState('');
+  const [bankCorrAccount, setBankCorrAccount] = useState('');
+  const [directorName, setDirectorName] = useState('');
+  const [accountantName, setAccountantName] = useState('');
+  const [billingError, setBillingError] = useState('');
+  const [billingOk, setBillingOk] = useState('');
+  const [billingSaving, setBillingSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState('');
@@ -102,6 +121,10 @@ export default function SettingsPage() {
       .then(([m, t, o]) => {
         setMe(m.data); setTeam(t.data?.items ?? []);
         setOrg(o.data); setOrgName(o.data.name); setOrgInn(o.data.inn ?? ''); setOrgKpp(o.data.kpp ?? '');
+        setBillingAddress(o.data.address ?? ''); setBankAccount(o.data.bank_account ?? '');
+        setBankName(o.data.bank_name ?? ''); setBankBik(o.data.bank_bik ?? '');
+        setBankCorrAccount(o.data.bank_corr_account ?? '');
+        setDirectorName(o.data.director_name ?? ''); setAccountantName(o.data.accountant_name ?? '');
         if (m.data.role === 'owner') {
           api.organization.invites.list().then(r => setInvites(r.data?.items ?? [])).catch(() => {});
         }
@@ -147,6 +170,25 @@ export default function SettingsPage() {
       setOrgError(e.message || 'Не удалось сохранить');
     } finally {
       setOrgSaving(false);
+    }
+  };
+
+  const saveBilling = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBillingError(''); setBillingOk('');
+    setBillingSaving(true);
+    try {
+      const res = await api.organization.update({
+        address: billingAddress, bank_account: bankAccount, bank_name: bankName,
+        bank_bik: bankBik, bank_corr_account: bankCorrAccount,
+        director_name: directorName, accountant_name: accountantName,
+      });
+      setOrg(res.data);
+      setBillingOk('Сохранено');
+    } catch (e: any) {
+      setBillingError(e.message || 'Не удалось сохранить');
+    } finally {
+      setBillingSaving(false);
     }
   };
 
@@ -265,6 +307,58 @@ export default function SettingsPage() {
               </button>
             </form>
           </div>
+        </div>
+      </div>
+
+      <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
+        <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+        <div className="card-header">Реквизиты для выставления счетов</div>
+        <div className="card-body">
+          <p className="text-muted" style={{ fontSize: 13, marginBottom: 14 }}>
+            Эти данные подставляются как реквизиты продавца в форму «Счёт на оплату» при выставлении счетов клиентам —
+            заполните их один раз в разделе «Выставленные счета».
+          </p>
+          {me?.role === 'owner' ? (
+            <form onSubmit={saveBilling}>
+              {billingError && <div className="error-box">{billingError}</div>}
+              {billingOk && <div className="tag tag-outline" style={{ marginBottom: 12 }}>{billingOk}</div>}
+              <div className="form-grid">
+                <div className="form-group full">
+                  <label className="field-label">Юридический адрес</label>
+                  <input className="input" type="text" value={billingAddress} onChange={e => setBillingAddress(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Расчётный счёт</label>
+                  <input className="input" type="text" value={bankAccount} onChange={e => setBankAccount(e.target.value)} placeholder="20 цифр" />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Наименование банка</label>
+                  <input className="input" type="text" value={bankName} onChange={e => setBankName(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">БИК</label>
+                  <input className="input" type="text" value={bankBik} onChange={e => setBankBik(e.target.value)} placeholder="9 цифр" />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Корр. счёт</label>
+                  <input className="input" type="text" value={bankCorrAccount} onChange={e => setBankCorrAccount(e.target.value)} placeholder="20 цифр" />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Руководитель</label>
+                  <input className="input" type="text" value={directorName} onChange={e => setDirectorName(e.target.value)} placeholder="Иванов И.И." />
+                </div>
+                <div className="form-group">
+                  <label className="field-label">Главный бухгалтер</label>
+                  <input className="input" type="text" value={accountantName} onChange={e => setAccountantName(e.target.value)} placeholder="Необязательно" />
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={billingSaving}>
+                {billingSaving ? 'Сохраняем…' : 'Сохранить'}
+              </button>
+            </form>
+          ) : (
+            <div className="text-muted" style={{ fontSize: 13 }}>Изменять реквизиты может только владелец организации.</div>
+          )}
         </div>
       </div>
 

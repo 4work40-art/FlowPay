@@ -26,10 +26,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INVITE_ROLES = new Set(['accountant', 'readonly']);
 const INVITE_TTL_DAYS = 7;
 
+const ORG_FIELDS = `id, name, inn, kpp, plan, invoice_limit, created_at,
+  address, bank_account, bank_name, bank_bik, bank_corr_account, director_name, accountant_name`;
+
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, inn, kpp, plan, invoice_limit, created_at FROM organizations WHERE id = $1`,
+      `SELECT ${ORG_FIELDS} FROM organizations WHERE id = $1`,
       [req.user.org_id]
     );
     if (!rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
@@ -43,11 +46,20 @@ router.patch('/me', authMiddleware, async (req, res) => {
   if (req.user.role !== 'owner')
     return err(res, 403, 'Изменять данные организации может только владелец', 'FORBIDDEN');
 
-  const { name, inn, kpp } = req.body || {};
+  const {
+    name, inn, kpp, address,
+    bank_account, bank_name, bank_bik, bank_corr_account, director_name, accountant_name,
+  } = req.body || {};
   if (name !== undefined && !name.trim())
     return err(res, 400, 'Название не может быть пустым', 'VALIDATION_ERROR');
   const reqError = validateRequisites({ inn, kpp });
   if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
+  if (bank_bik !== undefined && bank_bik && !/^\d{9}$/.test(bank_bik))
+    return err(res, 400, 'БИК должен состоять из 9 цифр', 'VALIDATION_ERROR');
+  if (bank_account !== undefined && bank_account && !/^\d{20}$/.test(bank_account))
+    return err(res, 400, 'Расчётный счёт должен состоять из 20 цифр', 'VALIDATION_ERROR');
+  if (bank_corr_account !== undefined && bank_corr_account && !/^\d{20}$/.test(bank_corr_account))
+    return err(res, 400, 'Корреспондентский счёт должен состоять из 20 цифр', 'VALIDATION_ERROR');
 
   try {
     const existing = await pool.query('SELECT * FROM organizations WHERE id = $1', [req.user.org_id]);
@@ -56,10 +68,16 @@ router.patch('/me', authMiddleware, async (req, res) => {
     const { rows } = await pool.query(`
       UPDATE organizations SET
         name = COALESCE($1, name), inn = COALESCE($2, inn), kpp = COALESCE($3, kpp),
+        address = COALESCE($4, address),
+        bank_account = COALESCE($5, bank_account), bank_name = COALESCE($6, bank_name),
+        bank_bik = COALESCE($7, bank_bik), bank_corr_account = COALESCE($8, bank_corr_account),
+        director_name = COALESCE($9, director_name), accountant_name = COALESCE($10, accountant_name),
         updated_at = NOW()
-      WHERE id = $4
-      RETURNING id, name, inn, kpp, plan, invoice_limit, created_at
-    `, [name?.trim() ?? null, inn ?? null, kpp ?? null, req.user.org_id]);
+      WHERE id = $11
+      RETURNING ${ORG_FIELDS}
+    `, [name?.trim() ?? null, inn ?? null, kpp ?? null, address ?? null,
+        bank_account ?? null, bank_name ?? null, bank_bik ?? null, bank_corr_account ?? null,
+        director_name ?? null, accountant_name ?? null, req.user.org_id]);
 
     await audit(req.user.org_id, req.user.id, 'organization.updated', 'organization', req.user.org_id, existing.rows[0], rows[0]);
     return ok(res, rows[0]);

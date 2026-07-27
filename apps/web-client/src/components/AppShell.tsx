@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, FileText, CreditCard, Calendar, Users, BarChart3,
-  Landmark, Settings, LifeBuoy, LogOut, Crown,
+  Landmark, Settings, LifeBuoy, LogOut, Crown, Send,
 } from 'lucide-react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
@@ -14,6 +14,7 @@ const NAV = [
   { href: '/dashboard',      icon: LayoutDashboard, label: 'Дашборд'     },
   { href: '/invoices',       icon: FileText,        label: 'Счета'       },
   { href: '/payments',       icon: CreditCard,      label: 'Платежи'     },
+  { href: '/outgoing-invoices', icon: Send,         label: 'Выставить счёт' },
   { href: '/calendar',       icon: Calendar,        label: 'Календарь'   },
   { href: '/counterparties', icon: Users,           label: 'Контрагенты' },
   { href: '/analytics',      icon: BarChart3,       label: 'Аналитика'   },
