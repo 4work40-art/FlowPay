@@ -9,6 +9,7 @@ type EditableRow = {
   number: string;
   invoice_date: string;
   due_date: string;
+  dueDateAuto: boolean; // true = срок оплаты подставлен автоматически, а не из реестра — требует проверки
   amountRub: string;
   counterparty_name: string;
   counterparty_inn: string;
@@ -21,19 +22,34 @@ type ImportResult = {
   failed: { row: number; reason: string }[];
 };
 
+const DEFAULT_DUE_DAYS = 14;
+// Срок оплаты по умолчанию, когда в реестре его нет — дата счёта (или
+// сегодня) + 14 дней, чтобы строка не улетала в импорт с пустым сроком.
+function addDays(dateStr: string, days: number): string {
+  const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  base.setDate(base.getDate() + days);
+  const y = base.getFullYear(), m = String(base.getMonth() + 1).padStart(2, '0'), d = String(base.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function toEditableRows(reg: RecognizedRegister): EditableRow[] {
-  return reg.items.map(item => ({
-    row: item.row,
-    include: item.warnings.length === 0,
-    number: item.number ?? '',
-    invoice_date: item.invoice_date ?? '',
-    due_date: item.due_date ?? '',
-    amountRub: item.amount_kopecks != null ? String(item.amount_kopecks / 100) : '',
-    counterparty_name: item.counterparty_name ?? '',
-    counterparty_inn: item.counterparty_inn ?? '',
-    notes: item.notes ?? '',
-    warnings: item.warnings,
-  }));
+  return reg.items.map(item => {
+    const due_date = item.due_date || addDays(item.invoice_date ?? '', DEFAULT_DUE_DAYS);
+    const dueDateAuto = !item.due_date;
+    return {
+      row: item.row,
+      include: item.warnings.length === 0,
+      number: item.number ?? '',
+      invoice_date: item.invoice_date ?? '',
+      due_date,
+      dueDateAuto,
+      amountRub: item.amount_kopecks != null ? String(item.amount_kopecks / 100) : '',
+      counterparty_name: item.counterparty_name ?? '',
+      counterparty_inn: item.counterparty_inn ?? '',
+      notes: item.notes ?? '',
+      warnings: dueDateAuto ? [...item.warnings, 'Срок оплаты не найден в реестре — предложен автоматически (дата счёта + 14 дней), проверьте'] : item.warnings,
+    };
+  });
 }
 
 export default function ImportInvoicesPage() {
@@ -66,6 +82,10 @@ export default function ImportInvoicesPage() {
       const rub = Number(r.amountRub.replace(',', '.'));
       if (!rub || rub <= 0) {
         setError(`Строка ${r.row}: укажите корректную сумму больше нуля`);
+        return;
+      }
+      if (!r.due_date) {
+        setError(`Строка ${r.row}: укажите срок оплаты`);
         return;
       }
     }
@@ -182,8 +202,22 @@ export default function ImportInvoicesPage() {
                           </td>
                           <td className="mono" style={{ color: '#888' }}>{r.row}</td>
                           <td><input type="text" value={r.number} onChange={e => updateRow(r.row, { number: e.target.value })} style={{ width: 90 }} /></td>
-                          <td><input type="date" value={r.invoice_date} onChange={e => updateRow(r.row, { invoice_date: e.target.value })} /></td>
-                          <td><input type="date" value={r.due_date} onChange={e => updateRow(r.row, { due_date: e.target.value })} /></td>
+                          <td>
+                            <input
+                              type="date" value={r.invoice_date}
+                              onChange={e => updateRow(r.row, {
+                                invoice_date: e.target.value,
+                                ...(r.dueDateAuto ? { due_date: addDays(e.target.value, DEFAULT_DUE_DAYS) } : {}),
+                              })}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="date" required value={r.due_date}
+                              style={r.dueDateAuto ? { borderColor: 'var(--amber-dark, #a06a00)' } : undefined}
+                              onChange={e => updateRow(r.row, { due_date: e.target.value, dueDateAuto: false, warnings: r.warnings.filter(w => !w.startsWith('Срок оплаты не найден')) })}
+                            />
+                          </td>
                           <td><input type="text" inputMode="decimal" value={r.amountRub} onChange={e => updateRow(r.row, { amountRub: e.target.value })} style={{ width: 100 }} /></td>
                           <td><input type="text" value={r.counterparty_name} onChange={e => updateRow(r.row, { counterparty_name: e.target.value })} style={{ width: 150 }} /></td>
                           <td><input type="text" value={r.counterparty_inn} onChange={e => updateRow(r.row, { counterparty_inn: e.target.value })} style={{ width: 100 }} /></td>
