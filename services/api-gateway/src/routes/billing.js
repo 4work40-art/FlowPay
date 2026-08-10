@@ -15,16 +15,27 @@ router.get('/plans', (req, res) => {
 
 router.get('/subscription', authMiddleware, async (req, res) => {
   try {
+    // organizations — источник истины для ТЕКУЩЕГО тарифа/лимита (их меняют и оплата,
+    // и платформенный админ из /admin). subscriptions — только для статуса/периода
+    // подписки, LEFT JOIN на случай, если строки там ещё нет.
     const { rows } = await pool.query(
-      `SELECT s.*, o.invoice_limit FROM subscriptions s
-       JOIN organizations o ON o.id = s.org_id
-       WHERE s.org_id = $1`,
+      `SELECT o.id AS org_id, o.plan, o.invoice_limit, s.status, s.current_period_end
+       FROM organizations o
+       LEFT JOIN subscriptions s ON s.org_id = o.id
+       WHERE o.id = $1`,
       [req.user.org_id]
     );
     if (!rows.length) {
       return ok(res, { org_id: req.user.org_id, plan: 'free', status: 'active', invoice_limit: PLANS.free.invoice_limit });
     }
-    return ok(res, rows[0]);
+    const row = rows[0];
+    return ok(res, {
+      org_id: row.org_id,
+      plan: row.plan,
+      invoice_limit: row.invoice_limit,
+      status: row.status || 'active',
+      current_period_end: row.current_period_end,
+    });
   } catch (e) {
     return dbErr(res, e, '[billing subscription]');
   }
