@@ -257,11 +257,27 @@ CREATE TABLE subscription_events (
 CREATE INDEX ON subscription_events(org_id);
 CREATE INDEX ON subscription_events(occurred_at);
 
--- Seed: только организация и логин-пользователь.
+-- Seed: демо-организация с демо-владельцем (обычный клиентский аккаунт,
+-- БЕЗ флага is_platform_admin — это не служебная учётка).
 -- Название организации можно поменять через Adminer (таблица organizations) —
 -- логин/пароль ниже не трогаем, чтобы не сломать текущий доступ.
 INSERT INTO organizations (id,name,inn,kpp,plan,invoice_limit,is_active,created_at,updated_at)
 VALUES ('00000000-0000-0000-0000-000000000001','ООО СтройМонтаж','1234567890','123456789','free',5,true,NOW(),NOW());
 
 INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score,is_platform_admin) VALUES
-  ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85,true);
+  ('00000000-0000-0000-0000-000000000002','demo@schyot-kontrol.ru',crypt('demo1234',gen_salt('bf')),'Иванов Иван Иванович','owner','00000000-0000-0000-0000-000000000001',85,false);
+
+-- Seed: отдельная служебная организация и пользователь-администратор
+-- платформы, для локальной разработки. Намеренно НЕ переиспользует
+-- demo-владельца клиентской организации выше — is_platform_admin никогда
+-- не должен совпадать с обычным клиентским аккаунтом-владельцем, иначе
+-- при переименовании/передаче demo-организации реальному клиенту он
+-- унаследует полный доступ ко всем данным платформы.
+-- Этот аккаунт выполняется только при первичном создании БД (init.sql не
+-- переигрывается на существующей БД) — на проде смена/ревокация флага
+-- выполняется вручную, отдельно от деплоя.
+INSERT INTO organizations (id,name,inn,kpp,plan,invoice_limit,is_active,created_at,updated_at)
+VALUES ('00000000-0000-0000-0000-000000000003','FlowPay (служебная)',NULL,NULL,'enterprise',0,true,NOW(),NOW());
+
+INSERT INTO users (id,email,password_hash,name,role,org_id,trust_score,is_platform_admin) VALUES
+  ('00000000-0000-0000-0000-000000000004','platform-admin@flowpay.local',crypt('changeme-local-only',gen_salt('bf')),'Platform Admin','owner','00000000-0000-0000-0000-000000000003',100,true);
