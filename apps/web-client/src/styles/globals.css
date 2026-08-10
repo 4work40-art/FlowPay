@@ -265,16 +265,64 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 .main-content { flex: 1; overflow-y: auto; padding: var(--space-6); }
 
+/* — mobile navigation (<=768px) —
+   Рельс .fp-rail на узких экранах превращался в горизонтальную полосу со
+   скроллом вбок — половина пунктов (профиль, выход) уезжала за край экрана
+   и требовала скролла внутри самой навигации, что неудобно для одной руки.
+   Вместо этого на мобильных рельс прячется целиком, а вместо него —
+   отдельная фиксированная нижняя панель (.fp-bottom-nav, разметка в
+   AppShell.tsx) с ключевыми разделами + шторка «Ещё» для остального. */
 @media (max-width: 768px) {
   .app-shell { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-  .sidebar, .fp-rail { width: 100%; flex-direction: row; height: auto; padding: 10px; overflow-x: auto; overflow-y: visible; box-shadow: 0 8px 20px -14px rgba(109,90,190,.25); }
-  .fp-brand { margin: 0 10px 0 0; }
-  .fp-nav, .sidebar-nav { flex-direction: row; flex: 0 0 auto; overflow: visible; }
-  .fp-nav-group { flex-direction: row; width: auto; }
-  .fp-nav-group + .fp-nav-group { margin: 0 0 0 8px; padding: 0 0 0 8px; border-top: none; border-left: 1px solid var(--row-divider); }
-  .fp-foot, .sidebar-footer { flex-direction: row; padding: 0 0 0 10px; }
-  .main-content { padding: var(--space-3); }
+  .sidebar, .fp-rail { display: none; }
+  .main-content { padding: var(--space-3); padding-bottom: calc(72px + var(--space-3) + env(safe-area-inset-bottom, 0px)); }
 }
+@media (min-width: 769px) {
+  .fp-bottom-nav, .fp-more-sheet, .fp-more-backdrop { display: none; }
+}
+
+.fp-bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  display: flex; align-items: stretch; justify-content: space-around;
+  background: rgba(255,255,255,.9); backdrop-filter: blur(20px);
+  box-shadow: 0 -8px 20px -14px rgba(109,90,190,.35);
+  border-top: 1px solid var(--row-divider);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.fp-bottom-item {
+  flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 4px 2px; border-radius: var(--radius-sm); border: none; background: transparent;
+  color: var(--color-text-secondary); text-decoration: none; font: 500 10px var(--font-body);
+}
+.fp-bottom-item svg { width: 20px; height: 20px; }
+.fp-bottom-item.active { color: var(--color-accent); }
+.fp-bottom-item:hover { text-decoration: none; }
+
+.fp-more-backdrop {
+  position: fixed; inset: 0; z-index: 45; background: rgba(38,36,60,.45);
+}
+.fp-more-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
+  transform: translateY(100%); transition: transform .18s ease;
+  background: var(--color-surface); border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-hero);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  max-height: 80vh; overflow-y: auto;
+}
+.fp-more-sheet.open { transform: translateY(0); }
+.fp-more-user { display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-4); }
+.fp-more-user-name { font-weight: 600; font-size: 14px; }
+.fp-more-user-sub { font-size: 12px; color: var(--color-text-secondary); }
+.fp-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fp-more-item {
+  display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--radius-sm);
+  background: var(--color-surface-muted); color: var(--color-text); text-decoration: none;
+  font-size: 13px; font-weight: 500; border: none; text-align: left; cursor: pointer;
+}
+.fp-more-item svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--color-text-secondary); }
+.fp-more-item:hover { text-decoration: none; background: var(--color-surface-muted-alt); }
+.fp-more-logout { color: var(--tag-pink-text); grid-column: 1 / -1; }
+.fp-more-logout svg { color: var(--tag-pink-text); }
 
 .section-label { font-family: var(--font-heading); text-transform: uppercase; font-size: 13px; letter-spacing: 0.04em; color: var(--color-text-secondary); font-weight: 600; margin: var(--space-6) 0 var(--space-3); }
 
@@ -349,6 +397,7 @@ tr.clickable { cursor: pointer; }
 @media (max-width: 768px) { .grid-2, .form-grid { grid-template-columns: 1fr; } }
 
 .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: var(--space-3); margin-bottom: var(--space-6); }
+@media (max-width: 640px) { .metric-grid { grid-template-columns: 1fr; } }
 .metric-card { border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-card-sm); padding: var(--space-3) var(--space-4); position: relative; }
 .metric-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
 .metric-value { font-family: var(--font-heading); font-size: 24px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }

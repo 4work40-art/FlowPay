@@ -210,7 +210,7 @@ export default function CounterpartiesPage() {
       ) : (
         <div className="card blueprint">
           <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table className="table">
               <thead>
                 <tr>
@@ -224,11 +224,11 @@ export default function CounterpartiesPage() {
               <tbody>
                 {filtered.map(c => (
                   <tr key={c.id}>
-                    <td style={{ fontWeight: 500 }}>{c.name}</td>
-                    <td className="text-muted">{c.inn ?? '—'}</td>
-                    <td>{TYPE_LABEL[c.type] ?? c.type}</td>
-                    <td>{c.invoice_count}</td>
-                    <td style={{ fontWeight: 600, color: +c.debt_kopecks > 0 ? 'var(--color-accent-700)' : 'inherit' }}>{c.debt_display}</td>
+                    <td data-label="Название" style={{ fontWeight: 500 }}>{c.name}</td>
+                    <td data-label="ИНН" className="text-muted">{c.inn ?? '—'}</td>
+                    <td data-label="Тип">{TYPE_LABEL[c.type] ?? c.type}</td>
+                    <td data-label="Счетов">{c.invoice_count}</td>
+                    <td data-label="Долг" style={{ fontWeight: 600, color: +c.debt_kopecks > 0 ? 'var(--color-accent-700)' : 'inherit' }}>{c.debt_display}</td>
                   </tr>
                 ))}
                 {!filtered.length && (
