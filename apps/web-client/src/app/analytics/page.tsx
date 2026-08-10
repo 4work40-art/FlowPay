@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { api, fmt } from '@/lib/api';
+import { api, fmt, formatQty } from '@/lib/api';
 
 const AGING_BUCKETS = [
   { key: '0-30',  label: '0–30 дней',   max: 30  },
@@ -230,7 +230,7 @@ export default function AnalyticsPage() {
                 {items.slice(0, 10).map(it => (
                   <tr key={it.name}>
                     <td><a href="/analytics/items">{it.name}</a></td>
-                    <td>{it.total_quantity}</td>
+                    <td>{formatQty(it.total_quantity)}</td>
                     <td>{it.total_display}</td>
                     <td>{it.avg_price_display ?? '—'}</td>
                     <td>{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
