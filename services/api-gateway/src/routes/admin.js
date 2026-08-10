@@ -153,14 +153,40 @@ router.patch('/organizations/:id', authMiddleware, requirePlatformAdmin, async (
     const before = await pool.query('SELECT * FROM organizations WHERE id=$1', [req.params.id]);
     if (!before.rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
 
-    const { rows } = await pool.query(`
-      UPDATE organizations SET
-        plan = COALESCE($1, plan),
-        invoice_limit = COALESCE($2, invoice_limit),
-        is_active = COALESCE($3, is_active),
-        updated_at = NOW()
-      WHERE id = $4 RETURNING *
-    `, [plan ?? null, invoice_limit ?? null, is_active ?? null, req.params.id]);
+    const client = await pool.connect();
+    let rows;
+    try {
+      await client.query('BEGIN');
+
+      const updated = await client.query(`
+        UPDATE organizations SET
+          plan = COALESCE($1, plan),
+          invoice_limit = COALESCE($2, invoice_limit),
+          is_active = COALESCE($3, is_active),
+          updated_at = NOW()
+        WHERE id = $4 RETURNING *
+      `, [plan ?? null, invoice_limit ?? null, is_active ?? null, req.params.id]);
+      rows = updated.rows;
+
+      // organizations — источник истины для текущего тарифа, но subscriptions
+      // держим синхронной (как это уже делают checkout webhook и cancel),
+      // чтобы история/статус подписки не расходились с ручным изменением тарифа админом.
+      if (plan !== undefined) {
+        await client.query(`
+          INSERT INTO subscriptions(org_id, plan, status)
+          VALUES($1, $2, 'active')
+          ON CONFLICT (org_id) DO UPDATE SET
+            plan = EXCLUDED.plan, status = 'active', updated_at = NOW()
+        `, [req.params.id, plan]);
+      }
+
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
 
     await audit(req.params.id, req.user.id, 'admin.organization_updated', 'organization', req.params.id,
       before.rows[0], { ...rows[0], reason });
