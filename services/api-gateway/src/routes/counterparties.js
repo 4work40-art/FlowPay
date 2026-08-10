@@ -25,6 +25,40 @@ function validateBankFields({ ogrn, bank_bik, bank_account, bank_corr_account })
   return null;
 }
 
+// Нормализация названия для мягкого сравнения на похожесть (пробелы и
+// регистр не должны считаться "разными" контрагентами).
+function normalizeName(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+// Ищет потенциальные дубли контрагента в организации:
+//  - inn: точное совпадение ИНН (сильный сигнал — почти наверняка тот же контрагент);
+//  - name: совпадение нормализованного названия при ДРУГОМ (или отсутствующем) ИНН
+//    (слабый сигнал — может быть совпадение, а не дубль, поэтому не блокирует).
+async function findDuplicates(orgId, { inn, name }) {
+  const result = { byInn: null, byName: null };
+  if (inn) {
+    const { rows } = await pool.query(
+      'SELECT id, name, inn FROM counterparties WHERE org_id = $1 AND is_active = true AND inn = $2 LIMIT 1',
+      [orgId, inn]
+    );
+    if (rows.length) result.byInn = rows[0];
+  }
+  const normalized = normalizeName(name);
+  if (normalized) {
+    const { rows } = await pool.query(
+      `SELECT id, name, inn FROM counterparties
+       WHERE org_id = $1 AND is_active = true
+         AND lower(regexp_replace(name, '\\s+', '', 'g')) = $2
+         AND ($3::text IS NULL OR inn IS DISTINCT FROM $3)
+       LIMIT 1`,
+      [orgId, normalized, inn || null]
+    );
+    if (rows.length && rows[0].id !== result.byInn?.id) result.byName = rows[0];
+  }
+  return result;
+}
+
 const router = express.Router();
 
 // Автозаполнение реквизитов по ИНН (ЕГРЮЛ/ЕГРИП через DaData).
@@ -98,27 +132,78 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// ИНН обязателен для НОВЫХ контрагентов (продуктовый аудит: карточки без
+// ИНН — риск задвоения контрагентов и ошибок в реквизитах в отчётности).
+// Исключение — служебное автосоздание контрагента из документов/импорта
+// (invoices/new, import-files, outgoing-invoices/new), где ИНН часто ещё
+// не распознан/неизвестен на момент создания счёта: такие вызовы явно
+// помечают себя флагом inn_optional и создают контрагента без ИНН как и
+// раньше — пользователь дозаполнит карточку в разделе «Контрагенты», где
+// это поле уже обязательно. Существующие записи без ИНН эта проверка не
+// трогает — миграции на NOT NULL нет и не должно быть.
 router.post('/', authMiddleware, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type,
-    ogrn, bank_account, bank_name, bank_bik, bank_corr_account } = req.body || {};
+    ogrn, bank_account, bank_name, bank_bik, bank_corr_account,
+    inn_optional, check_duplicates, confirm_duplicate } = req.body || {};
   if (!name || !name.trim())
     return err(res, 400, 'Укажите название', 'VALIDATION_ERROR');
+  if (!inn_optional && (!inn || !String(inn).trim()))
+    return err(res, 400, 'Укажите ИНН — обязателен при создании контрагента', 'VALIDATION_ERROR');
   const reqError = validateRequisites({ inn, kpp });
   if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
   const bankError = validateBankFields({ ogrn, bank_bik, bank_account, bank_corr_account });
   if (bankError) return err(res, 400, bankError, 'VALIDATION_ERROR');
 
+  const innTrimmed = inn ? String(inn).trim() : null;
+  const nameTrimmed = name.trim();
+
   try {
+    // Предупреждение о дублях — не жёсткая блокировка. Точное совпадение
+    // ИНН — сильный сигнал: карточку не создаём, пока пользователь явно не
+    // подтвердит (confirm_duplicate), а возвращаем данные существующего
+    // контрагента, чтобы UI показал предупреждение и дал выбрать "перейти
+    // к нему" / "всё равно создать". Проверяется только когда об этом
+    // явно просит вызывающая сторона (check_duplicates) — так основной
+    // сценарий (без дублей) остаётся одним запросом без лишних round-trip'ов,
+    // а служебные автосоздания из других форм этот флаг не шлют и ведут
+    // себя как раньше.
+    if (check_duplicates && !confirm_duplicate) {
+      const dup = await findDuplicates(req.user.org_id, { inn: innTrimmed, name: nameTrimmed });
+      if (dup.byInn) {
+        return ok(res, {
+          duplicate: true,
+          match: 'inn',
+          existing: dup.byInn,
+          message: `Контрагент с ИНН ${innTrimmed} уже есть в списке: «${dup.byInn.name}». Перейти к нему или всё равно создать нового?`,
+        });
+      }
+    }
+
     const { rows } = await pool.query(`
       INSERT INTO counterparties(org_id, name, inn, kpp, phone, email, address, type,
         ogrn, bank_account, bank_name, bank_bik, bank_corr_account)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
-    `, [req.user.org_id, name.trim(), inn || null, kpp || null, phone || null,
+    `, [req.user.org_id, nameTrimmed, innTrimmed, kpp || null, phone || null,
         email || null, address || null, type || 'vendor',
         ogrn || null, bank_account || null, bank_name || null, bank_bik || null, bank_corr_account || null]);
 
     await audit(req.user.org_id, req.user.id, 'counterparty.created', 'counterparty', rows[0].id, null, { name });
-    return ok(res, rows[0], 201);
+
+    // Мягкое предупреждение по похожести названия (другой/отсутствующий
+    // ИНН) — не блокирует, просто прикладывается к успешному ответу.
+    let warning = null;
+    if (check_duplicates) {
+      const dup = await findDuplicates(req.user.org_id, { inn: innTrimmed, name: nameTrimmed });
+      if (dup.byName) {
+        warning = {
+          match: 'name',
+          existing: dup.byName,
+          message: `Похожее название уже есть в списке: «${dup.byName.name}» (ИНН ${dup.byName.inn ?? '—'}). Проверьте, не тот же ли это контрагент.`,
+        };
+      }
+    }
+
+    return ok(res, { ...rows[0], warning }, 201);
   } catch (e) {
     return dbErr(res, e, '[counterparty create]');
   }
