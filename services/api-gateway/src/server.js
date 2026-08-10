@@ -35,6 +35,13 @@ app.use('/api/v1/analytics',      require('./routes/analytics'));
 app.use('/api/v1',                require('./routes/documents'));
 app.use('/api/v1/public',         require('./routes/public'));
 
+// БУДУЩЕЕ (не активно): точка расширения под опциональный платный модуль
+// интеграции с ЭДО-провайдером (СБИС/Диадок) — не меняет текущее
+// позиционирование продукта («не является системой ЭДО»). Заготовка
+// клиента — services/api-gateway/src/lib/edoProvider.js. Реального роута
+// пока нет и намеренно не подключается:
+// app.use('/api/v1/edo', require('./routes/edo'));
+
 app.use((req, res) => {
   res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Маршрут ${req.method} ${req.path} не найден` } });
 });
