@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Link2, Ban, Unlock, ArrowLeft, Plus, Download, Trash2, X } from 'lucide-react';
-import { api, STATUS_LABEL, STATUS_DESCRIPTION } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_DESCRIPTION, InvoiceItemInput } from '@/lib/api';
 
 type Payment = {
   id: string;
@@ -54,6 +54,17 @@ export default function InvoiceDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [docError, setDocError] = useState('');
 
+  // Предложение дозаполнить недостающие поля счёта данными, распознанными
+  // из только что прикреплённого файла (та же логика распознавания и тот
+  // же эндпоинт /invoices/:id/fill-missing, что использует форма создания
+  // счёта для дозаполнения дубля — см. invoices/new/page.tsx). Дозаполняем
+  // только то, чего в счёте ещё нет: fill-missing на бэкенде использует
+  // COALESCE и не трогает уже заполненные поля.
+  const [fillSuggestion, setFillSuggestion] = useState<{
+    invoice_date?: string; due_date?: string; items?: InvoiceItemInput[]; fieldsLabel: string;
+  } | null>(null);
+  const [filling, setFilling] = useState(false);
+
   // silent=true — обновить данные счёта без полноэкранного спиннера (после
   // локальных изменений вроде удаления платежа/позиции): иначе весь контент
   // страницы на секунду пропадает и ощущается как перезагрузка страницы.
@@ -76,14 +87,54 @@ export default function InvoiceDetailPage() {
   const onFileSelected = async (file: File | null) => {
     if (!file) return;
     setDocError('');
+    setFillSuggestion(null);
     setUploading(true);
     try {
       await api.documents.upload(id, file);
       loadDocs();
     } catch (e: any) {
       setDocError(e.message || 'Не удалось загрузить файл');
-    } finally {
       setUploading(false);
+      return;
+    }
+    setUploading(false);
+
+    // Файл прикреплён — дополнительно пробуем распознать его тем же
+    // эндпоинтом, что и форма создания счёта, и предлагаем дозаполнить
+    // только то, чего у счёта ещё нет (дату счёта/срок оплаты/позиции).
+    // Ошибка или неудачное распознавание не мешают самому прикреплению —
+    // файл уже сохранён, это лишь необязательная подсказка сверху.
+    try {
+      const res = await api.documents.recognize(file);
+      const r = res.data;
+      if (r.doc_type !== 'invoice') return;
+      const f = r.fields;
+      const missing: { invoice_date?: string; due_date?: string; items?: InvoiceItemInput[] } = {};
+      const labels: string[] = [];
+      if (!inv?.invoice_date && f.invoice_date) { missing.invoice_date = f.invoice_date; labels.push('дату счёта'); }
+      if (!inv?.due_date && f.due_date) { missing.due_date = f.due_date; labels.push('срок оплаты'); }
+      if (!inv?.items?.length && f.items?.length) {
+        missing.items = f.items.map((it: any) => ({ name: it.name, quantity: it.quantity, unit: it.unit || undefined, unit_price_kopecks: it.unit_price_kopecks }));
+        labels.push('товарные позиции');
+      }
+      if (labels.length) setFillSuggestion({ ...missing, fieldsLabel: labels.join(', ') });
+    } catch {
+      // распознавание необязательно — молча пропускаем
+    }
+  };
+
+  const applyFillSuggestion = async () => {
+    if (!fillSuggestion) return;
+    setFilling(true);
+    try {
+      const { fieldsLabel, ...body } = fillSuggestion;
+      await api.invoices.fillMissing(id, body);
+      setFillSuggestion(null);
+      load(true);
+    } catch (e: any) {
+      setDocError(e.message || 'Не удалось дозаполнить счёт');
+    } finally {
+      setFilling(false);
     }
   };
 
@@ -208,6 +259,17 @@ export default function InvoiceDetailPage() {
           </label>
         </div>
         {docError && <div className="error-box">{docError}</div>}
+        {fillSuggestion && (
+          <div className="card-body" style={{ borderTop: '1px solid var(--color-divider)', background: 'var(--blue-light, #eaf2fb)', color: 'var(--blue-dark, #1a5fb4)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>В прикреплённом файле распознали {fillSuggestion.fieldsLabel} — дозаполнить недостающее в счёте?</span>
+            <button type="button" className="btn btn-sm btn-primary" disabled={filling} onClick={applyFillSuggestion}>
+              {filling ? 'Дозаполняем…' : 'Дозаполнить'}
+            </button>
+            <button type="button" className="btn btn-sm btn-ghost" disabled={filling} onClick={() => setFillSuggestion(null)}>
+              Не сейчас
+            </button>
+          </div>
+        )}
         <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
@@ -238,7 +300,7 @@ export default function InvoiceDetailPage() {
           </table>
         </div>
         <div className="card-body" style={{ borderTop: '1px solid var(--color-divider)' }}>
-          <span className="field-hint">Разрешены PDF, JPG, PNG, до 15 МБ. Автоматическое распознавание полей — в следующих обновлениях.</span>
+          <span className="field-hint">Разрешены PDF, JPG, PNG, до 15 МБ. Если в файле распознаются недостающие в счёте данные (дата, срок оплаты, позиции) — предложим их дозаполнить.</span>
         </div>
       </div>
 
