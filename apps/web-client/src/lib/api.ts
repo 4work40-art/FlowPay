@@ -320,6 +320,9 @@ export const api = {
     }) => req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),
+    // Прогнозный риск просрочки — отдельная объяснимая эвристика на истории
+    // последних счетов контрагента, НЕ то же самое, что trust_score.
+    overdueRisk: (id: string) => req(`/counterparties/${id}/overdue-risk`),
   },
 
   analytics: {

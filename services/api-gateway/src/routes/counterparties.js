@@ -7,6 +7,7 @@ const { validateRequisites, isValidInn } = require('../lib/inn');
 const { isValidOgrn, isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
 const dadata = require('../lib/dadata');
 const { classifyAbc } = require('../lib/abcAnalysis');
+const { computeOverdueRisk } = require('../lib/overdueRisk');
 
 // Банковские реквизиты и ОГРН — та же схема валидации формата, что и у
 // ИНН/КПП в этом файле (см. validateRequisites): явно неверный формат
@@ -206,6 +207,53 @@ router.post('/', authMiddleware, async (req, res) => {
     return ok(res, { ...rows[0], warning }, 201);
   } catch (e) {
     return dbErr(res, e, '[counterparty create]');
+  }
+});
+
+// Прогнозный риск просрочки — объяснимая эвристика на истории последних
+// счетов контрагента (см. lib/overdueRisk.js), а НЕ изменение существующего
+// counterparties.trust_score. trust_score — статичное поле 0..100, которое
+// уже используется как есть в прогнозе кассовых разрывов
+// (dashboard.js/cashflow-forecast: доля суммы недели у контрагентов с
+// trust_score < 40) и в ABC-анализе объёма закупок (rating выше) как способ
+// связать контрагента с его записью — переиспользование или изменение
+// смысла этого поля сломало бы оба потребителя. Поэтому риск считается
+// отдельно, "на лету" по каждому запросу карточки — простых объёмов данных
+// организации достаточно, чтобы не заводить отдельное кэширующее поле и
+// не изобретать инвалидацию кэша при каждом новом платеже.
+router.get('/:id/overdue-risk', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
+  try {
+    const cp = await pool.query('SELECT id FROM counterparties WHERE id=$1 AND org_id=$2', [req.params.id, orgId]);
+    if (!cp.rows.length) return err(res, 404, 'Контрагент не найден', 'NOT_FOUND');
+
+    // Берём счета с известным исходом относительно срока оплаты — оплаченные
+    // (в т.ч. частично/архивные/списанные) и уже просроченные неоплаченные.
+    // Свежесозданные/ожидающие своего срока счета (CREATED, UNDER_CONTROL,
+    // PAYMENT_PENDING, ещё не наступил due_date) и спорные (DISPUTED) в
+    // выборку не попадают — по ним рано или неоднозначно судить о просрочке.
+    const { rows } = await pool.query(`
+      SELECT i.due_date, pd.last_pay AS paid_date
+      FROM invoices i
+      LEFT JOIN (SELECT invoice_id, MAX(payment_date) AS last_pay FROM payments GROUP BY invoice_id) pd
+        ON pd.invoice_id = i.id
+      WHERE i.counterparty_id = $1 AND i.org_id = $2
+        AND i.due_date IS NOT NULL
+        AND i.status IN ('PAID','ARCHIVED','OVERDUE','PARTIALLY_PAID','WRITTEN_OFF')
+      ORDER BY i.due_date DESC
+      LIMIT 50
+    `, [req.params.id, orgId]);
+
+    const risk = computeOverdueRisk(rows);
+    if (!risk) {
+      return ok(res, {
+        available: false,
+        message: 'Недостаточно истории платежей для прогноза риска просрочки',
+      });
+    }
+    return ok(res, { available: true, ...risk });
+  } catch (e) {
+    return dbErr(res, e, '[counterparty overdue-risk]');
   }
 });
 
