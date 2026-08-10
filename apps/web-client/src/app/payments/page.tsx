@@ -6,6 +6,17 @@ import { downloadCsv, fetchAllPages } from '@/lib/csv';
 
 const PAGE_SIZE = 20;
 
+// Максимальная длина текста примечания («ПП») в таблице до усечения —
+// после этого показываем «…» и полный текст по наведению (title), чтобы
+// длинные референсы не рвали строки таблицы. В проекте пока нет drawer/
+// модалки для такого — заводить их ради одного поля избыточно.
+const NOTE_TRUNCATE_LEN = 60;
+function truncateNote(text: string | null | undefined) {
+  const s = text || '';
+  if (s.length <= NOTE_TRUNCATE_LEN) return s;
+  return s.slice(0, NOTE_TRUNCATE_LEN) + '…';
+}
+
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [total,    setTotal]    = useState(0);
@@ -21,20 +32,46 @@ export default function PaymentsPage() {
   const [importError, setImportError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Фильтры списка (отдельно от периода экспорта выше).
+  const [query, setQuery] = useState('');
+  const [counterpartyId, setCounterpartyId] = useState('');
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo,   setFilterTo]   = useState('');
+  const [counterparties, setCounterparties] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.counterparties.list().then(r => setCounterparties(r.data?.items ?? [])).catch(() => {});
+  }, []);
+
   // silent=true — обновить список без спиннера (после удаления платежа):
   // иначе таблица на секунду пропадает целиком и ощущается как перезагрузка.
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     setError('');
-    api.payments.list({ page: String(page), limit: String(PAGE_SIZE) })
+    const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
+    if (counterpartyId) params.counterparty_id = counterpartyId;
+    if (filterFrom) params.from = filterFrom;
+    if (filterTo)   params.to   = filterTo;
+    api.payments.list(params)
       .then(r => { setPayments(r.data?.items ?? []); setTotal(r.data?.total ?? 0); })
       .catch((e: Error) => setError(e.message))
       .finally(() => { if (!silent) setLoading(false); });
-  }, [page]);
+  }, [page, counterpartyId, filterFrom, filterTo]);
 
   useEffect(() => { load(); }, [load]);
 
+  // Сброс на первую страницу при смене фильтра — иначе можно застрять
+  // на странице, которой у нового фильтра уже нет.
+  useEffect(() => { setPage(1); }, [counterpartyId, filterFrom, filterTo]);
+
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const filtered = query
+    ? payments.filter(p =>
+        String(p.invoice_number ?? '').toLowerCase().includes(query.toLowerCase()) ||
+        String(p.counterparty_name ?? '').toLowerCase().includes(query.toLowerCase()) ||
+        String(p.reference ?? '').toLowerCase().includes(query.toLowerCase()))
+    : payments;
 
   const onImportFile = async (file: File | null) => {
     if (!file) return;
@@ -102,6 +139,24 @@ export default function PaymentsPage() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 12, marginBottom: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'center' }}>
+        <select className="input" style={{ maxWidth: 220 }} value={counterpartyId} onChange={e => setCounterpartyId(e.target.value)}>
+          <option value="">Все контрагенты</option>
+          {counterparties.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span className="text-muted" style={{ fontSize: 12 }}>Период:</span>
+          <input className="input" type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} style={{ width: 150 }} />
+          <span className="text-muted" style={{ fontSize: 12 }}>—</span>
+          <input className="input" type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} style={{ width: 150 }} />
+        </div>
+        <input
+          className="input" type="text" placeholder="Поиск по счёту, контрагенту или ПП…"
+          style={{ maxWidth: 260, marginLeft: 'auto' }}
+          value={query} onChange={e => setQuery(e.target.value)}
+        />
+      </div>
+
       {importError && <div className="error-box">{importError}</div>}
       {importResult && (
         <div className="card blueprint" style={{ marginBottom: 'var(--space-4)', fontSize: 13 }}>
@@ -138,18 +193,20 @@ export default function PaymentsPage() {
                   <th style={{ width: 80 }}>Счёт</th>
                   <th>Контрагент</th>
                   <th style={{ width: 150 }}>Сумма</th>
-                  <th style={{ width: 100 }}>ПП</th>
+                  <th style={{ width: 220 }}>ПП</th>
                   <th style={{ width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {payments.map(p => (
+                {filtered.map(p => (
                   <tr key={p.id}>
                     <td data-label="Дата" className="text-muted" style={{ fontSize: 12 }}>{formatDateOnly(p.payment_date)}</td>
                     <td data-label="Счёт" className="mono text-muted">#{p.invoice_number}</td>
                     <td data-label="Контрагент" style={{ fontWeight: 500 }}>{p.counterparty_name || '—'}</td>
                     <td data-label="Сумма" style={{ fontWeight: 600, color: 'var(--color-accent-700)' }}>{p.amount_display}</td>
-                    <td data-label="ПП" className="text-muted" style={{ fontSize: 12 }}>{p.reference || '—'}</td>
+                    <td data-label="ПП" className="text-muted" style={{ fontSize: 12 }} title={p.reference || undefined}>
+                      {truncateNote(p.reference) || '—'}
+                    </td>
                     <td>
                       <button
                         type="button" className="btn btn-icon btn-secondary" disabled={deletingId === p.id}
@@ -177,17 +234,20 @@ export default function PaymentsPage() {
                     </td>
                   </tr>
                 ))}
-                {!payments.length && (
+                {!filtered.length && !payments.length && (
                   <tr><td colSpan={6} className="empty-state">
                     Платежей пока нет. Записать платёж можно со страницы конкретного счёта.
                   </td></tr>
+                )}
+                {!filtered.length && !!payments.length && (
+                  <tr><td colSpan={6} className="empty-state">Ничего не найдено</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
         <div className="table-footer">
-          <span>{total} платежей</span>
+          <span>{query ? `${filtered.length} из ${payments.length} на странице, ` : ''}{total} платежей всего</span>
           {pages > 1 && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ArrowLeft size={13} strokeWidth={1.5} /> Назад</button>

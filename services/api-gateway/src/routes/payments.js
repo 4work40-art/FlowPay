@@ -10,6 +10,9 @@ router.get('/', authMiddleware, async (req, res) => {
   const orgId  = req.user.org_id;
   const from   = req.query.from; // YYYY-MM-DD, по payment_date
   const to     = req.query.to;
+  const counterpartyId = req.query.counterparty_id;
+  const amountMin = req.query.amount_min ? parseInt(req.query.amount_min) : null; // копейки
+  const amountMax = req.query.amount_max ? parseInt(req.query.amount_max) : null;
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -18,6 +21,9 @@ router.get('/', authMiddleware, async (req, res) => {
     let where = 'WHERE p.org_id = $1';
     if (from) { params.push(from); where += ` AND p.payment_date >= $${params.length}`; }
     if (to)   { params.push(to);   where += ` AND p.payment_date <= $${params.length}`; }
+    if (counterpartyId) { params.push(counterpartyId); where += ` AND i.counterparty_id = $${params.length}`; }
+    if (Number.isFinite(amountMin)) { params.push(amountMin); where += ` AND p.amount_kopecks >= $${params.length}`; }
+    if (Number.isFinite(amountMax)) { params.push(amountMax); where += ` AND p.amount_kopecks <= $${params.length}`; }
 
     const { rows } = await pool.query(`
       SELECT p.*, i.number AS invoice_number, c.name AS counterparty_name
@@ -26,7 +32,7 @@ router.get('/', authMiddleware, async (req, res) => {
       LEFT JOIN counterparties c ON i.counterparty_id = c.id
       ${where} ORDER BY p.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, limit, offset]);
-    const cnt = await pool.query(`SELECT COUNT(*) FROM payments p ${where}`, params);
+    const cnt = await pool.query(`SELECT COUNT(*) FROM payments p JOIN invoices i ON p.invoice_id = i.id ${where}`, params);
     return ok(res, {
       items: rows.map(r => ({ ...r, amount_display: fmt(r.amount_kopecks) })),
       total: +cnt.rows[0].count, page, limit,
