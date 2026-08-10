@@ -43,6 +43,94 @@ router.get('/reminders', authMiddleware, async (req, res) => {
   }
 });
 
+// Прогноз кассовых разрывов: неоплаченные входящие счета, сгруппированные
+// по неделям от сегодняшней даты на основе due_date (теперь обязателен и
+// заполнен у всех счетов). Просроченные (due_date в прошлом) попадают в
+// отдельный бакет "overdue" — это уже случившийся разрыв, а не прогноз.
+// Для каждой будущей недели также отдаём простую метрику риска: долю суммы
+// недели, приходящуюся на контрагентов с низким Trust Score (< 40) — эти
+// деньги статистически чаще уходят в просрочку. Это MVP-эвристика на базе
+// уже существующего trust_score, а не предиктивная модель.
+const FORECAST_WEEKS = 6;
+const LOW_TRUST_THRESHOLD = 40;
+
+router.get('/cashflow-forecast', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        i.due_date,
+        (i.amount_kopecks - i.paid_kopecks) AS remaining_kopecks,
+        COALESCE(c.trust_score, 50) AS trust_score
+      FROM invoices i
+      LEFT JOIN counterparties c ON i.counterparty_id = c.id
+      WHERE i.org_id = $1
+        AND i.status NOT IN ('PAID','ARCHIVED','WRITTEN_OFF')
+        AND i.due_date IS NOT NULL
+        AND i.due_date < CURRENT_DATE + ($2 || ' weeks')::interval
+    `, [orgId, FORECAST_WEEKS]);
+
+    // Бакеты: 0 = просрочено (due_date < сегодня), 1..FORECAST_WEEKS = недели вперёд
+    // (неделя N = [сегодня + (N-1)*7 дней, сегодня + N*7 дней))
+    const buckets = [{ key: 'overdue', label: 'Просрочено', from: null, to: null }];
+    for (let w = 1; w <= FORECAST_WEEKS; w++) {
+      buckets.push({ key: `week_${w}`, label: `Неделя ${w}`, from: (w - 1) * 7, to: w * 7 });
+    }
+    const acc = buckets.map(() => ({ sum: 0, count: 0, trustWeightedSum: 0, lowTrustSum: 0 }));
+
+    const todayMs = new Date(new Date().toDateString()).getTime();
+    for (const r of rows) {
+      const remaining = +r.remaining_kopecks;
+      if (remaining <= 0) continue;
+      const dueMs = new Date(r.due_date).getTime();
+      const daysFromToday = Math.floor((dueMs - todayMs) / 86400000);
+
+      let idx;
+      if (daysFromToday < 0) {
+        idx = 0;
+      } else {
+        const weekNum = Math.floor(daysFromToday / 7) + 1;
+        if (weekNum > FORECAST_WEEKS) continue;
+        idx = weekNum;
+      }
+
+      const bucket = acc[idx];
+      bucket.sum += remaining;
+      bucket.count += 1;
+      bucket.trustWeightedSum += remaining * (+r.trust_score);
+      if (+r.trust_score < LOW_TRUST_THRESHOLD) bucket.lowTrustSum += remaining;
+    }
+
+    const weeks = buckets.map((b, i) => {
+      const a = acc[i];
+      const avgTrustScore = a.sum > 0 ? Math.round(a.trustWeightedSum / a.sum) : null;
+      const riskSharePct = a.sum > 0 ? Math.round((a.lowTrustSum / a.sum) * 100) : 0;
+      return {
+        key: b.key,
+        label: b.label,
+        range_days: b.from === null ? null : { from: b.from, to: b.to },
+        kopecks: a.sum,
+        display: fmt(a.sum),
+        invoice_count: a.count,
+        avg_trust_score: avgTrustScore,
+        risk_share_pct: riskSharePct,
+      };
+    });
+
+    const totalKopecks = weeks.reduce((s, w) => s + w.kopecks, 0);
+
+    return ok(res, {
+      forecast_weeks: FORECAST_WEEKS,
+      low_trust_threshold: LOW_TRUST_THRESHOLD,
+      total_kopecks: totalKopecks,
+      total_display: fmt(totalKopecks),
+      weeks,
+    });
+  } catch (e) {
+    return dbErr(res, e, '[dashboard cashflow-forecast]');
+  }
+});
+
 router.get('/', authMiddleware, async (req, res) => {
   const orgId = req.user.org_id;
   try {

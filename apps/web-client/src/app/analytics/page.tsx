@@ -38,6 +38,12 @@ type ItemSummary = {
   active_months: number; last_purchase_date: string | null;
 };
 
+type ForecastWeek = {
+  key: string; label: string; range_days: { from: number; to: number } | null;
+  kopecks: number; display: string; invoice_count: number;
+  avg_trust_score: number | null; risk_share_pct: number;
+};
+
 export default function AnalyticsPage() {
   const [summary,  setSummary]  = useState<any>(null);
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -52,6 +58,10 @@ export default function AnalyticsPage() {
   const [items, setItems] = useState<ItemSummary[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [itemsError, setItemsError] = useState('');
+
+  const [forecast, setForecast] = useState<ForecastWeek[]>([]);
+  const [forecastLoading, setForecastLoading] = useState(true);
+  const [forecastError, setForecastError] = useState('');
 
   const [showAudit, setShowAudit] = useState(false);
   const [audit, setAudit] = useState<any[]>([]);
@@ -78,6 +88,13 @@ export default function AnalyticsPage() {
       .then(res => setItems(res.data?.items ?? []))
       .catch((e: Error) => setItemsError(e.message))
       .finally(() => setItemsLoading(false));
+
+    setForecastLoading(true);
+    setForecastError('');
+    api.dashboard.cashflowForecast()
+      .then(res => setForecast(res.data?.weeks ?? []))
+      .catch((e: Error) => setForecastError(e.message))
+      .finally(() => setForecastLoading(false));
   };
 
   useEffect(() => { load(); }, []);
@@ -161,6 +178,65 @@ export default function AnalyticsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
+        <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+        <div className="card-header">
+          <span>Прогноз кассовых разрывов</span>
+          {forecast.length > 0 && (
+            <span className="text-muted" style={{ fontWeight: 400 }}>
+              К оплате за {forecast.length - 1} недель: {fmt(forecast.reduce((s, w) => s + w.kopecks, 0))}
+            </span>
+          )}
+        </div>
+        <div className="card-body" style={{ paddingTop: 0 }}>
+          <p className="text-muted" style={{ fontSize: 13, margin: '10px 0 14px' }}>
+            Неоплаченные входящие счета по неделям (на основе срока оплаты <code>due_date</code>).
+            Красным — доля суммы недели, приходящаяся на контрагентов с низким Trust Score
+            (&lt; 40) — эти деньги статистически чаще уходят в просрочку.
+          </p>
+        </div>
+        {forecastLoading ? (
+          <div className="card-body"><div className="loading">Загрузка…</div></div>
+        ) : forecastError ? (
+          <div className="card-body"><div className="error-box">{forecastError}</div></div>
+        ) : !forecast.some(w => w.kopecks > 0) ? (
+          <div className="card-body"><div className="empty-state">Нет неоплаченных счетов с заполненным сроком оплаты</div></div>
+        ) : (
+          <div className="card-body" style={{ paddingTop: 0 }}>
+            <div style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
+              {forecast.map(w => {
+                const maxForecast = Math.max(1, ...forecast.map(x => x.kopecks));
+                const total = Math.max(3, (w.kopecks / maxForecast) * 90);
+                const riskHeight = total * (w.risk_share_pct / 100);
+                return (
+                  <div key={w.key} style={{ flex: '0 0 84px', textAlign: 'center' }}>
+                    <div style={{ height: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <div style={{ width: 40, height: total, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                        {w.risk_share_pct > 0 && (
+                          <div style={{ width: '100%', height: riskHeight, background: 'var(--tag-pink-text)' }} />
+                        )}
+                        <div style={{
+                          width: '100%',
+                          height: total - riskHeight,
+                          background: w.key === 'overdue' ? 'var(--color-accent-900)' : 'var(--color-accent-500)',
+                        }} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>{w.display}</div>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{w.label} · {w.invoice_count} сч.</div>
+                    {w.kopecks > 0 && (
+                      <div className="text-muted" style={{ fontSize: 10 }}>
+                        Trust {w.avg_trust_score ?? '—'}{w.risk_share_pct > 0 ? ` · риск ${w.risk_share_pct}%` : ''}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card blueprint" style={{ marginBottom: 'var(--space-4)' }}>
