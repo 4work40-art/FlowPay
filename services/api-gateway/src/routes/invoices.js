@@ -125,6 +125,8 @@ router.post('/', authMiddleware, async (req, res) => {
     return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
   if (!Number.isInteger(amount_kopecks))
     return err(res, 400, 'Сумма должна быть целым числом (в копейках)', 'VALIDATION_ERROR');
+  if (!due_date)
+    return err(res, 400, 'Укажите срок оплаты счёта — без него счёт не попадёт в календарь оплат и не будет учтён в просрочках', 'VALIDATION_ERROR');
   const itemsError = validateItems(items);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
 
@@ -206,6 +208,11 @@ router.post('/bulk', authMiddleware, async (req, res) => {
         const amount_kopecks = item.amount_kopecks;
         if (!Number.isInteger(amount_kopecks) || amount_kopecks <= 0) {
           failed.push({ row, reason: 'Сумма должна быть целым числом больше нуля (в копейках)' });
+          continue;
+        }
+
+        if (!item.due_date) {
+          failed.push({ row, reason: 'Укажите срок оплаты — без него счёт не попадёт в календарь оплат и не будет учтён в просрочках' });
           continue;
         }
 

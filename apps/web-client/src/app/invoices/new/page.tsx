@@ -9,13 +9,25 @@ type Counterparty = { id: string; name: string; inn: string | null };
 type ItemRow = { name: string; quantity: string; unit: string; price: string };
 const emptyItemRow = (): ItemRow => ({ name: '', quantity: '1', unit: 'шт', price: '' });
 
+const DEFAULT_DUE_DAYS = 14;
+// Срок оплаты по умолчанию — дата счёта (или сегодня, если её тоже нет) + 14
+// дней. Используется как предлагаемое значение, когда распознавание документа
+// не смогло извлечь срок оплаты, чтобы поле не оставалось пустым молча.
+function addDays(dateStr: string, days: number): string {
+  const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  base.setDate(base.getDate() + days);
+  const y = base.getFullYear(), m = String(base.getMonth() + 1).padStart(2, '0'), d = String(base.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export default function NewInvoicePage() {
   const router = useRouter();
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [amount,   setAmount]   = useState('');
   const [number,   setNumber]   = useState('');
   const [cpId,     setCpId]     = useState('');
-  const [dueDate,  setDueDate]  = useState('');
+  const [dueDate,  setDueDate]  = useState(() => addDays('', DEFAULT_DUE_DAYS));
+  const [dueDateAuto, setDueDateAuto] = useState(true); // true = значение подставлено автоматически, а не выбрано пользователем/OCR
   const [notes,    setNotes]    = useState('');
   const [error,    setError]    = useState('');
   const [saving,   setSaving]   = useState(false);
@@ -70,7 +82,16 @@ export default function NewInvoicePage() {
     if (f.amount_kopecks) setAmount(String(f.amount_kopecks / 100));
     if (f.number) setNumber(f.number);
     if (f.invoice_date) setInvoiceDate(f.invoice_date);
-    if (f.due_date) setDueDate(f.due_date);
+    if (f.due_date) {
+      setDueDate(f.due_date);
+      setDueDateAuto(false);
+    } else {
+      // Распознавание не нашло срок оплаты — не оставляем поле пустым:
+      // подставляем дату счёта (или сегодня) + 14 дней и явно помечаем это
+      // как предложенное автоматически значение, требующее проверки.
+      setDueDate(addDays(f.invoice_date || '', DEFAULT_DUE_DAYS));
+      setDueDateAuto(true);
+    }
 
     // Счёт-фактура/УПД называет стороны "продавец/покупатель", обычный счёт —
     // "поставщик"; приводим к одному имени и ИНН для дальнейшего сопоставления.
@@ -137,6 +158,7 @@ export default function NewInvoicePage() {
     if (existingInvoice) { await fillMissingAndGo(); return; }
     const rub = Number(amount.replace(',', '.'));
     if (!rub || rub <= 0) { setError('Укажите сумму больше нуля'); return; }
+    if (!dueDate) { setError('Укажите срок оплаты счёта'); return; }
 
     setSaving(true);
     try {
@@ -220,12 +242,28 @@ export default function NewInvoicePage() {
 
               <div className="form-group">
                 <label className="field-label">Дата счёта</label>
-                <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+                <input
+                  type="date" value={invoiceDate}
+                  onChange={e => {
+                    setInvoiceDate(e.target.value);
+                    // Пока пользователь не тронул срок оплаты вручную, держим
+                    // его синхронизированным с датой счёта (+14 дней).
+                    if (dueDateAuto) setDueDate(addDays(e.target.value, DEFAULT_DUE_DAYS));
+                  }}
+                />
               </div>
 
               <div className="form-group">
-                <label className="field-label">Срок оплаты</label>
-                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                <label className="field-label">Срок оплаты *</label>
+                <input
+                  type="date" required value={dueDate}
+                  onChange={e => { setDueDate(e.target.value); setDueDateAuto(false); }}
+                />
+                {dueDateAuto && (
+                  <span className="field-hint" style={{ color: 'var(--amber-dark, #a06a00)' }}>
+                    Предложено автоматически (дата счёта + 14 дней) — проверьте и поправьте при необходимости.
+                  </span>
+                )}
               </div>
 
               <div className="form-group full">
