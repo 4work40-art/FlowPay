@@ -1,8 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Download, BarChart3, FolderUp, Plus, ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Download, BarChart3, FolderUp, Plus, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api, STATUS_LABEL, STATUS_DESCRIPTION, formatDateOnly } from '@/lib/api';
 import { downloadCsv, fetchAllPages } from '@/lib/csv';
+
+const PAGE_SIZE = 20;
 
 function statusTagClass(status: string) {
   return `tag status-${status}`;
@@ -19,6 +21,8 @@ const FILTERS: [string, string][] = [
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [total,    setTotal]    = useState(0);
+  const [page,     setPage]     = useState(1);
   const [status,   setStatus]   = useState('');
   const [query,    setQuery]    = useState('');
   const [loading,  setLoading]  = useState(true);
@@ -28,15 +32,23 @@ export default function InvoicesPage() {
   const [exportTo,   setExportTo]   = useState('');
   const [showExport, setShowExport] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true); setError('');
-    api.invoices.list(status ? { status } : {})
-      .then(r => setInvoices(r.data?.items ?? []))
+    const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
+    if (status) params.status = status;
+    api.invoices.list(params)
+      .then(r => { setInvoices(r.data?.items ?? []); setTotal(r.data?.total ?? 0); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [status, page]);
 
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => { load(); }, [load]);
+
+  // Сброс на первую страницу при смене фильтра — иначе можно застрять
+  // на странице, которой у нового фильтра уже нет.
+  useEffect(() => { setPage(1); }, [status]);
+
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const filtered = query
     ? invoices.filter(inv =>
@@ -171,7 +183,14 @@ export default function InvoicesPage() {
           </div>
         )}
         <div className="table-footer">
-          <span>{filtered.length} из {invoices.length} счетов</span>
+          <span>{query ? `${filtered.length} из ${invoices.length} на странице, ` : ''}{total} счетов всего</span>
+          {pages > 1 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ArrowLeft size={13} strokeWidth={1.5} /> Назад</button>
+              <span style={{ fontSize: 12 }} className="text-muted">{page} / {pages}</span>
+              <button className="btn btn-sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Вперёд <ArrowRight size={13} strokeWidth={1.5} /></button>
+            </div>
+          )}
           <a href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><ArrowLeft size={13} strokeWidth={1.5} /> Дашборд</a>
         </div>
       </div>

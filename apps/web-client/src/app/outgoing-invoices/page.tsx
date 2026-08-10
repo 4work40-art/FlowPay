@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, Plus, RefreshCw } from 'lucide-react';
 import { api, OUTGOING_STATUS_LABEL, OUTGOING_STATUS_DESCRIPTION, formatDateOnly } from '@/lib/api';
+
+const PAGE_SIZE = 20;
 
 function statusTagClass(status: string) {
   if (status === 'overdue') return 'tag tag-accent';
@@ -26,19 +28,29 @@ type OutgoingInvoice = {
 
 export default function OutgoingInvoicesPage() {
   const [invoices, setInvoices] = useState<OutgoingInvoice[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true); setError('');
-    api.outgoingInvoices.list(status ? { status } : {})
-      .then(r => setInvoices(r.data?.items ?? []))
+    const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
+    if (status) params.status = status;
+    api.outgoingInvoices.list(params)
+      .then(r => { setInvoices(r.data?.items ?? []); setTotal(r.data?.total ?? 0); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [status, page]);
 
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => { load(); }, [load]);
+
+  // Сброс на первую страницу при смене фильтра — иначе можно застрять
+  // на странице, которой у нового фильтра уже нет.
+  useEffect(() => { setPage(1); }, [status]);
+
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Контроль по выставленным счетам: сколько отправлено и ждёт оплаты,
   // сколько просрочено — видно сразу, без захода в каждый счёт.
@@ -133,6 +145,16 @@ export default function OutgoingInvoicesPage() {
             </table>
           </div>
         )}
+        <div className="table-footer">
+          <span>{total} счетов всего</span>
+          {pages > 1 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ArrowLeft size={13} strokeWidth={1.5} /> Назад</button>
+              <span style={{ fontSize: 12 }} className="text-muted">{page} / {pages}</span>
+              <button className="btn btn-sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Вперёд <ArrowRight size={13} strokeWidth={1.5} /></button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
