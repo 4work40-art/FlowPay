@@ -122,6 +122,9 @@ export default function NewInvoicePage() {
             ogrn: f.ogrn || undefined, address: f.address || undefined,
             bank_account: f.bank_account || undefined, bank_name: f.bank_name || undefined,
             bank_bik: f.bank_bik || undefined, bank_corr_account: f.bank_corr_account || undefined,
+            // ИНН из документа не всегда распознаётся OCR — не блокируем
+            // автосоздание, пользователь дозаполнит карточку вручную.
+            inn_optional: true,
           });
           await loadCounterparties();
           setCpId(created.data.id);

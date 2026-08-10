@@ -307,6 +307,13 @@ export const api = {
     create: (body: {
       name: string; inn?: string; kpp?: string; phone?: string; email?: string; address?: string; type?: string;
       ogrn?: string; bank_account?: string; bank_name?: string; bank_bik?: string; bank_corr_account?: string;
+      // ИНН обязателен по умолчанию (см. POST /counterparties) — служебные
+      // автосоздания контрагента из документов/импорта передают inn_optional,
+      // чтобы сохранить прежнее поведение. check_duplicates включает мягкую
+      // проверку дублей (см. форму на /counterparties); confirm_duplicate —
+      // повторная отправка после того, как пользователь подтвердил создание
+      // несмотря на найденный дубль по ИНН.
+      inn_optional?: boolean; check_duplicates?: boolean; confirm_duplicate?: boolean;
     }) => req('/counterparties', { method:'POST', body:JSON.stringify(body) }),
     update: (id: string, body: Record<string, any>) =>
       req(`/counterparties/${id}`, { method:'PATCH', body:JSON.stringify(body) }),

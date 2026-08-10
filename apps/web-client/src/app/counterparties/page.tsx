@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { BarChart3, Plus, X, ArrowDown } from 'lucide-react';
+import { BarChart3, Plus, X, ArrowDown, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { innError } from '@/lib/inn';
 
 type Counterparty = {
   id: string; name: string; inn: string | null; kpp: string | null;
@@ -23,6 +24,12 @@ export default function CounterpartiesPage() {
   const [saving,  setSaving]  = useState(false);
   const [formError, setFormError] = useState('');
   const [suggesting, setSuggesting] = useState(false);
+  // Точное совпадение ИНН — блокирует сохранение до решения пользователя
+  // (перейти к существующему / всё равно создать нового).
+  const [duplicateBlock, setDuplicateBlock] = useState<{ existing: { id: string; name: string; inn: string | null }; message: string } | null>(null);
+  // Похожее название при другом ИНН — контрагент уже создан, это просто
+  // дружелюбное уведомление после сохранения, не требует решения.
+  const [duplicateNotice, setDuplicateNotice] = useState<string>('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -35,15 +42,30 @@ export default function CounterpartiesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: React.SyntheticEvent, confirmDuplicate = false) => {
     e.preventDefault();
     setFormError('');
+    setDuplicateBlock(null);
     if (!form.name.trim()) { setFormError('Укажите название'); return; }
+    // ИНН обязателен для новых контрагентов — проверяем и контрольную
+    // сумму (тот же алгоритм, что и на сервере, см. lib/inn.ts).
+    const innMsg = innError(form.inn);
+    if (innMsg) { setFormError(innMsg); return; }
     setSaving(true);
     try {
-      await api.counterparties.create({ ...form, inn: form.inn || undefined, kpp: form.kpp || undefined, phone: form.phone || undefined, email: form.email || undefined, address: form.address || undefined });
+      const res = await api.counterparties.create({
+        ...form, inn: form.inn.trim(), kpp: form.kpp || undefined, phone: form.phone || undefined,
+        email: form.email || undefined, address: form.address || undefined,
+        check_duplicates: true, confirm_duplicate: confirmDuplicate,
+      });
+      if (res.data?.duplicate) {
+        // Точное совпадение ИНН — не создаём, ждём решения пользователя.
+        setDuplicateBlock({ existing: res.data.existing, message: res.data.message });
+        return;
+      }
       setForm(EMPTY_FORM);
       setShowForm(false);
+      setDuplicateNotice(res.data?.warning ? res.data.warning.message : '');
       load();
     } catch (e: any) {
       setFormError(e.message || 'Не удалось сохранить');
@@ -62,7 +84,7 @@ export default function CounterpartiesPage() {
         <div className="page-title">Контрагенты</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <a href="/analytics" className="btn btn-secondary btn-sm"><BarChart3 size={14} strokeWidth={1.5} /> Рейтинг закупок — в Аналитике</a>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)}>
+          <button className="btn btn-primary btn-sm" onClick={() => { setShowForm(s => !s); setDuplicateBlock(null); setFormError(''); }}>
             {showForm ? <><X size={14} strokeWidth={1.5} /> Отмена</> : <><Plus size={14} strokeWidth={1.5} /> Добавить контрагента</>}
           </button>
         </div>
@@ -74,15 +96,41 @@ export default function CounterpartiesPage() {
           <div className="card-body">
             <form onSubmit={submit}>
               {formError && <div className="error-box">{formError}</div>}
+              {duplicateBlock && (
+                <div className="error-box" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    <AlertTriangle size={16} strokeWidth={1.5} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <span>{duplicateBlock.message}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button" className="btn btn-secondary btn-sm"
+                      onClick={() => { setQuery(duplicateBlock.existing.inn || duplicateBlock.existing.name); setShowForm(false); setDuplicateBlock(null); }}
+                    >
+                      Перейти к «{duplicateBlock.existing.name}»
+                    </button>
+                    <button
+                      type="button" className="btn btn-primary btn-sm" disabled={saving}
+                      onClick={(e) => submit(e, true)}
+                    >
+                      Всё равно создать нового
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="form-grid">
                 <div className="form-group full">
                   <label className="field-label">Название *</label>
                   <input className="input" type="text" required autoFocus value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
                 </div>
                 <div className="form-group">
-                  <label className="field-label">ИНН</label>
+                  <label className="field-label">ИНН *</label>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <input className="input" type="text" value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value })} />
+                    <input
+                      className="input" type="text" required inputMode="numeric" maxLength={12}
+                      placeholder="10 или 12 цифр"
+                      value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value })}
+                    />
                     <button
                       type="button" className="btn btn-secondary btn-sm"
                       title="Подтянуть название, КПП и адрес из ЕГРЮЛ/ЕГРИП по ИНН"
@@ -137,6 +185,14 @@ export default function CounterpartiesPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {duplicateNotice && (
+        <div className="card blueprint" style={{ marginBottom: 'var(--space-4)', maxWidth: 640, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <AlertTriangle size={16} strokeWidth={1.5} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span style={{ flex: 1 }}>{duplicateNotice}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDuplicateNotice('')}><X size={14} strokeWidth={1.5} /></button>
         </div>
       )}
 

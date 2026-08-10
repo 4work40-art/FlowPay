@@ -153,7 +153,8 @@ export default function ImportInvoiceFilesPage() {
             counterpartyId = createdCpByKey.get(key);
           } else {
             try {
-              const cpRes = await api.counterparties.create({ name: r.counterpartyName });
+              // ИНН из реестра не всегда есть — не блокируем импорт счетов.
+              const cpRes = await api.counterparties.create({ name: r.counterpartyName, inn_optional: true });
               counterpartyId = cpRes.data.id;
               createdCpByKey.set(key, counterpartyId!);
             } catch {

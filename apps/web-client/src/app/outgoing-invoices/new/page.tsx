@@ -54,7 +54,9 @@ export default function NewOutgoingInvoicePage() {
     try {
       let counterpartyId = cpId || undefined;
       if (!counterpartyId && newCpName.trim()) {
-        const cpRes = await api.counterparties.create({ name: newCpName.trim(), type: 'customer' });
+        // Быстрое создание клиента по названию — ИНН часто ещё не под рукой,
+        // не блокируем выставление счёта.
+        const cpRes = await api.counterparties.create({ name: newCpName.trim(), type: 'customer', inn_optional: true });
         counterpartyId = cpRes.data.id;
       }
       const res = await api.outgoingInvoices.create({
