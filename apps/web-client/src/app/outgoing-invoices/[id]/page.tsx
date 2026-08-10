@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, X, Trash2, FileDown, FileSpreadsheet, Send, CheckCircle2, Ban, RotateCcw } from 'lucide-react';
-import { api, OUTGOING_STATUS_LABEL, OUTGOING_STATUS_DESCRIPTION } from '@/lib/api';
+import { api, OUTGOING_STATUS_LABEL, OUTGOING_STATUS_DESCRIPTION, formatQty } from '@/lib/api';
 import type { InvoiceItemInput } from '@/lib/api';
 
 type Item = {
@@ -226,7 +226,7 @@ function ItemsCard({ invoiceId, items, editable, onChanged }: { invoiceId: strin
             {items.map(it => (
               <tr key={it.id}>
                 <td data-label="Наименование">{it.name}</td>
-                <td data-label="Кол-во">{it.quantity}</td>
+                <td data-label="Кол-во">{formatQty(it.quantity)}</td>
                 <td data-label="Ед.">{it.unit ?? '—'}</td>
                 <td data-label="Цена">{it.unit_price_display}</td>
                 <td data-label="Сумма" style={{ fontWeight: 600 }}>{it.amount_display}</td>

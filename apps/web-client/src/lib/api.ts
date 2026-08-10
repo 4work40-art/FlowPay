@@ -402,6 +402,18 @@ export function fmt(kopecks: number | string | null | undefined): string {
   return n.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' ₽';
 }
 
+// ─── Форматирование количества (quantity: NUMERIC(14,3) в БД) ─────
+// node-postgres возвращает NUMERIC как строку с полными тремя знаками
+// после точки ("200.000", "1.500"), это не годится для вывода —
+// убираем незначащие нули у целых значений и показываем дробную часть
+// только если она значима, с запятой как разделителем (формат ru-RU).
+export function formatQty(quantity: string | number | null | undefined): string {
+  if (quantity === null || quantity === undefined || quantity === '') return '';
+  const n = Number(quantity);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
 // ─── Форматирование даты (DATE-поля БД: payment_date, due_date,
 // invoice_date) — ДД.ММ.ГГГГ. Разбираем строку напрямую, не через
 // new Date().toLocaleDateString(): БД отдаёт такие поля в JSON как

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, formatQty } from '@/lib/api';
 
 // Печатная форма "Счёт на оплату" — стандартный для РФ вид (унифицированной
 // формы законом не установлено, но структура общепринята: реквизиты
@@ -85,7 +85,7 @@ export default function OutgoingInvoicePrintPage() {
             <tr key={it.id}>
               <td style={{ border: '1px solid #000', padding: 5, textAlign: 'center' }}>{i + 1}</td>
               <td style={{ border: '1px solid #000', padding: 5 }}>{it.name}</td>
-              <td style={{ border: '1px solid #000', padding: 5, textAlign: 'center' }}>{it.quantity}</td>
+              <td style={{ border: '1px solid #000', padding: 5, textAlign: 'center' }}>{formatQty(it.quantity)}</td>
               <td style={{ border: '1px solid #000', padding: 5, textAlign: 'center' }}>{it.unit ?? '—'}</td>
               <td style={{ border: '1px solid #000', padding: 5, textAlign: 'right' }}>{it.unit_price_display}</td>
               <td style={{ border: '1px solid #000', padding: 5, textAlign: 'right' }}>{it.amount_display}</td>

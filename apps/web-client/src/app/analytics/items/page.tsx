@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, formatQty } from '@/lib/api';
 
 type ItemSummary = {
   name: string;
@@ -88,7 +88,7 @@ export default function ItemsAnalyticsPage() {
                   <tr key={it.name} onClick={() => setSelected(it.name)}
                     style={{ cursor: 'pointer', background: selected === it.name ? 'var(--card-bg2, #f7f5ef)' : undefined }}>
                     <td>{it.name}</td>
-                    <td>{it.total_quantity}</td>
+                    <td>{formatQty(it.total_quantity)}</td>
                     <td>{it.total_display}</td>
                     <td>{it.avg_price_display ?? '—'}</td>
                     <td>{it.active_months}</td>

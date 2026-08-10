@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Link2, Ban, Unlock, ArrowLeft, Plus, Download, Trash2, X } from 'lucide-react';
-import { api, STATUS_LABEL, STATUS_DESCRIPTION, InvoiceItemInput } from '@/lib/api';
+import { api, STATUS_LABEL, STATUS_DESCRIPTION, InvoiceItemInput, formatQty } from '@/lib/api';
 
 type Payment = {
   id: string;
@@ -446,7 +446,7 @@ function ItemsCard({ invoiceId, items, onChanged }: { invoiceId: string; items: 
             {items.map(it => (
               <tr key={it.id}>
                 <td data-label="Наименование">{it.name}</td>
-                <td data-label="Кол-во">{it.quantity}</td>
+                <td data-label="Кол-во">{formatQty(it.quantity)}</td>
                 <td data-label="Ед.">{it.unit ?? '—'}</td>
                 <td data-label="Цена">{it.unit_price_display}</td>
                 <td data-label="Сумма" style={{ fontWeight: 600 }}>{it.amount_display}</td>
