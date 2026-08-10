@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
         ) : ratingError ? (
           <div className="card-body"><div className="error-box">{ratingError}</div></div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table className="table">
               <thead>
                 <tr><th>#</th><th>Название</th><th>ИНН</th><th>Сумма закупок</th><th>Доля</th><th>Группа</th></tr>
@@ -189,12 +189,12 @@ export default function AnalyticsPage() {
               <tbody>
                 {rating.map((r, i) => (
                   <tr key={r.counterparty_id}>
-                    <td className="text-muted">{i + 1}</td>
-                    <td style={{ fontWeight: 500 }}>{r.name}</td>
-                    <td className="text-muted">{r.inn ?? '—'}</td>
-                    <td style={{ fontWeight: 600 }}>{r.total_display}</td>
-                    <td>{r.share_pct}%</td>
-                    <td><span className={GROUP_TAG[r.group]}>{r.group}</span></td>
+                    <td data-label="#" className="text-muted">{i + 1}</td>
+                    <td data-label="Название" style={{ fontWeight: 500 }}>{r.name}</td>
+                    <td data-label="ИНН" className="text-muted">{r.inn ?? '—'}</td>
+                    <td data-label="Сумма закупок" style={{ fontWeight: 600 }}>{r.total_display}</td>
+                    <td data-label="Доля">{r.share_pct}%</td>
+                    <td data-label="Группа"><span className={GROUP_TAG[r.group]}>{r.group}</span></td>
                   </tr>
                 ))}
                 {!rating.length && <tr><td colSpan={6} className="empty-state">Пока нет закупок с привязкой к контрагенту</td></tr>}
@@ -215,7 +215,7 @@ export default function AnalyticsPage() {
         ) : itemsError ? (
           <div className="card-body"><div className="error-box">{itemsError}</div></div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table className="table">
               <thead>
                 <tr>
@@ -229,11 +229,11 @@ export default function AnalyticsPage() {
               <tbody>
                 {items.slice(0, 10).map(it => (
                   <tr key={it.name}>
-                    <td><a href="/analytics/items">{it.name}</a></td>
-                    <td>{it.total_quantity}</td>
-                    <td>{it.total_display}</td>
-                    <td>{it.avg_price_display ?? '—'}</td>
-                    <td>{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
+                    <td data-label="Наименование"><a href="/analytics/items">{it.name}</a></td>
+                    <td data-label="Куплено, шт.">{it.total_quantity}</td>
+                    <td data-label="Сумма закупок">{it.total_display}</td>
+                    <td data-label="Средняя цена/шт.">{it.avg_price_display ?? '—'}</td>
+                    <td data-label="Последняя закупка">{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
                   </tr>
                 ))}
                 {!items.length && <tr><td colSpan={5} className="empty-state">Пока нет позиций — добавьте товары/услуги в счета</td></tr>}
