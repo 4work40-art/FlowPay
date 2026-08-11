@@ -6,7 +6,7 @@ import { api, PLAN_LABEL, ROLE_LABEL } from '@/lib/api';
 type OrgDetail = {
   id: string; name: string; plan: string; invoice_limit: number; is_active: boolean;
   created_at: string; invoice_count: number;
-  users: { id: string; email: string; name: string; role: string; is_active: boolean; is_platform_admin: boolean; last_login_at: string | null }[];
+  users: { id: string; email: string; name: string; role: string; is_active: boolean; last_login_at: string | null }[];
   recent_activity: { id: number; timestamp: string; action: string; resource: string; status: string }[];
 };
 
@@ -23,10 +23,6 @@ export default function AdminOrganizationDetailPage() {
   const [saving,  setSaving]  = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveOk,   setSaveOk]     = useState('');
-
-  const [adminBusyId, setAdminBusyId] = useState('');
-  const [adminError,  setAdminError]  = useState('');
-  const [adminOk,     setAdminOk]     = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -65,30 +61,6 @@ export default function AdminOrganizationDetailPage() {
       setSaveError(e.message || 'Не удалось сохранить');
     } finally {
       setSaving(false);
-    }
-  };
-
-  // Причину спрашиваем всегда (она уходит в журнал аудита), и явно
-  // предупреждаем, что действие немедленно завершает сессии пользователя.
-  const togglePlatformAdmin = async (userId: string, next: boolean) => {
-    setAdminError(''); setAdminOk('');
-    const reason = window.prompt(
-      next
-        ? 'Причина выдачи прав администратора платформы (попадёт в журнал аудита). Все текущие сессии пользователя будут завершены.'
-        : 'Причина снятия прав администратора платформы (попадёт в журнал аудита). Все текущие сессии пользователя будут завершены немедленно.'
-    );
-    if (reason === null) return;
-    if (!reason.trim()) { setAdminError('Укажите причину изменения'); return; }
-
-    setAdminBusyId(userId);
-    try {
-      await api.admin.setPlatformAdmin(userId, { is_platform_admin: next, reason });
-      setAdminOk(next ? 'Права выданы, сессии пользователя завершены' : 'Права сняты, сессии пользователя завершены');
-      load();
-    } catch (e: any) {
-      setAdminError(e.message || 'Не удалось изменить статус');
-    } finally {
-      setAdminBusyId('');
     }
   };
 
@@ -139,12 +111,10 @@ export default function AdminOrganizationDetailPage() {
 
         <div className="card">
           <div className="card-header">Пользователи · {org.users.length}</div>
-          {adminError && <div className="error-box" style={{ margin: 12 }}>{adminError}</div>}
-          {adminOk && <div style={{ background: 'var(--green-light)', color: 'var(--green-dark)', padding: '8px 12px', borderRadius: 6, fontSize: 13, margin: 12 }}>{adminOk}</div>}
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Имя</th><th>Роль</th><th>Вход</th><th>Админ платформы</th></tr>
+                <tr><th>Имя</th><th>Роль</th><th>Вход</th></tr>
               </thead>
               <tbody>
                 {org.users.map(u => (
@@ -152,19 +122,9 @@ export default function AdminOrganizationDetailPage() {
                     <td style={{ fontWeight: 500 }}>{u.name}<div style={{ color: 'var(--text2)', fontSize: 11 }}>{u.email}</div></td>
                     <td>{ROLE_LABEL[u.role] ?? u.role}</td>
                     <td style={{ color: 'var(--text2)', fontSize: 12 }}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('ru-RU') : '—'}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={adminBusyId === u.id}
-                        onClick={() => togglePlatformAdmin(u.id, !u.is_platform_admin)}
-                      >
-                        {adminBusyId === u.id ? '…' : u.is_platform_admin ? 'Снять права' : 'Выдать права'}
-                      </button>
-                    </td>
                   </tr>
                 ))}
-                {!org.users.length && <tr><td colSpan={4} className="empty-state">Нет пользователей</td></tr>}
+                {!org.users.length && <tr><td colSpan={3} className="empty-state">Нет пользователей</td></tr>}
               </tbody>
             </table>
           </div>

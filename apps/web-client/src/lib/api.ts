@@ -74,6 +74,62 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
   return data;
 }
 
+// ─── Контур администратора платформы ─────────────────────
+// Токен админки живёт под ОТДЕЛЬНЫМ ключом pa_token: клиентский кабинет и
+// панель платформы — разные учётные записи в разных таблицах, и быть
+// залогиненным в оба одновременно в одном браузере нормально. Общий ключ
+// означал бы, что вход в одно место выкидывает из другого.
+const PLATFORM_TOKEN_KEY = 'pa_token';
+
+export function getPlatformToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(PLATFORM_TOKEN_KEY);
+}
+
+export function setPlatformToken(token: string) {
+  localStorage.setItem(PLATFORM_TOKEN_KEY, token);
+}
+
+export function clearPlatformSession() {
+  localStorage.removeItem(PLATFORM_TOKEN_KEY);
+}
+
+// Отдельный транспорт для админки: свой токен и свой редирект по 401 —
+// на /admin/login, а не на клиентский /login. Клиентскую сессию (sk_token)
+// не трогает ни при каких обстоятельствах.
+async function platformReq<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
+  const url   = `${BASE}${path}`;
+  const token = getPlatformToken();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...opts.headers,
+      },
+    });
+  } catch (e: any) {
+    throw new Error(`Сеть недоступна (${url}): ${e.message}`);
+  }
+
+  if (res.status === 401 && typeof window !== 'undefined' && path !== '/platform/login') {
+    clearPlatformSession();
+    window.location.href = '/admin/login';
+    throw new Error('Сессия истекла, войдите заново');
+  }
+
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
+    const e = new Error(msg) as Error & { code?: string };
+    e.code = data?.error?.code;
+    throw e;
+  }
+  return data;
+}
+
 // ─── FIX #5: объект api с нужными методами ───────────────
 export const api = {
   public: {
@@ -339,21 +395,27 @@ export const api = {
       req('/users/me/password', { method:'PATCH', body:JSON.stringify({ current_password, new_password }) }),
   },
 
+  // Вход в панель управления платформой — отдельный эндпоинт, отдельная
+  // таблица учётных записей, отдельный токен. К api.auth отношения не имеет.
+  platformAuth: {
+    login: (email: string, password: string) =>
+      platformReq('/platform/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+    logout: () => platformReq('/platform/logout', { method: 'POST' }),
+    me: () => platformReq('/platform/me'),
+  },
+
+  // Все запросы админки идут через platformReq (pa_token). Через клиентский
+  // req() они бы отправляли sk_token, который сервер здесь не принимает.
   admin: {
-    overview: () => req('/admin/overview'),
-    organizations: () => req('/admin/organizations'),
-    organization: (id: string) => req(`/admin/organizations/${id}`),
+    overview: () => platformReq('/admin/overview'),
+    organizations: () => platformReq('/admin/organizations'),
+    organization: (id: string) => platformReq(`/admin/organizations/${id}`),
     updateOrganization: (id: string, body: { plan?: string; invoice_limit?: number; is_active?: boolean; reason: string }) =>
-      req(`/admin/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    // Смена статуса администратора платформы: сервер также немедленно
-    // отзывает все сессии этого пользователя, поэтому старый токен с
-    // admin:true перестаёт работать сразу, а не через 24 часа.
-    setPlatformAdmin: (userId: string, body: { is_platform_admin: boolean; reason: string }) =>
-      req(`/admin/users/${userId}/platform-admin`, { method: 'PATCH', body: JSON.stringify(body) }),
-    engagement: () => req('/admin/engagement'),
-    revenueEvents: () => req('/admin/revenue-events'),
+      platformReq(`/admin/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    engagement: () => platformReq('/admin/engagement'),
+    revenueEvents: () => platformReq('/admin/revenue-events'),
     createRevenueEvent: (body: { org_id: string; amount_kopecks: number; plan?: string; occurred_at?: string; note?: string }) =>
-      req('/admin/revenue-events', { method: 'POST', body: JSON.stringify(body) }),
+      platformReq('/admin/revenue-events', { method: 'POST', body: JSON.stringify(body) }),
   },
 
   organization: {

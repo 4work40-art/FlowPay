@@ -28,6 +28,10 @@ app.use('/api/v1/payments',       require('./routes/bankImport'));
 app.use('/api/v1/counterparties', require('./routes/counterparties'));
 app.use('/api/v1/users',          require('./routes/users'));
 app.use('/api/v1/audit',          require('./routes/audit'));
+// Контур администратора платформы: свой вход (/platform/login) и свои
+// роуты управления (/admin/*), защищённые platformAdminAuthMiddleware.
+// Клиентский JWT сюда не проходит, платформенный не проходит в клиентские роуты.
+app.use('/api/v1/platform',       require('./routes/platformAuth'));
 app.use('/api/v1/admin',          require('./routes/admin'));
 app.use('/api/v1/billing',        require('./routes/billing'));
 app.use('/api/v1/organizations',  require('./routes/organizations'));

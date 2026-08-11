@@ -1,13 +1,13 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware, requirePlatformAdmin, revokeAllUserSessions } = require('../lib/auth');
-const { audit } = require('../lib/audit');
+const { platformAdminAuthMiddleware } = require('../lib/platformAuth');
+const { platformAudit } = require('../lib/audit');
 const { PLANS } = require('../lib/plans');
 
 const router = express.Router();
 
-router.get('/overview', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.get('/overview', platformAdminAuthMiddleware, async (req, res) => {
   try {
     // Кабинет создателя — метрики бизнеса, а не долгов клиентов:
     // база, платящие, доход (ЮKassa + вручную внесённые платежи), активность.
@@ -93,7 +93,7 @@ router.get('/overview', authMiddleware, requirePlatformAdmin, async (req, res) =
   }
 });
 
-router.get('/organizations', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.get('/organizations', platformAdminAuthMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT o.id, o.name, o.plan, o.invoice_limit, o.is_active, o.created_at,
@@ -116,13 +116,13 @@ router.get('/organizations', authMiddleware, requirePlatformAdmin, async (req, r
   }
 });
 
-router.get('/organizations/:id', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.get('/organizations/:id', platformAdminAuthMiddleware, async (req, res) => {
   try {
     const orgRows = await pool.query('SELECT * FROM organizations WHERE id=$1', [req.params.id]);
     if (!orgRows.rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
 
     const users = await pool.query(
-      `SELECT id, email, name, role, is_active, is_platform_admin, last_login_at, created_at
+      `SELECT id, email, name, role, is_active, last_login_at, created_at
        FROM users WHERE org_id=$1 ORDER BY created_at`,
       [req.params.id]
     );
@@ -144,7 +144,7 @@ router.get('/organizations/:id', authMiddleware, requirePlatformAdmin, async (re
   }
 });
 
-router.patch('/organizations/:id', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.patch('/organizations/:id', platformAdminAuthMiddleware, async (req, res) => {
   const { plan, invoice_limit, is_active, reason } = req.body || {};
   if ((plan !== undefined || invoice_limit !== undefined || is_active !== undefined) && !reason?.trim())
     return err(res, 400, 'Укажите причину изменения', 'VALIDATION_ERROR');
@@ -188,7 +188,7 @@ router.patch('/organizations/:id', authMiddleware, requirePlatformAdmin, async (
       client.release();
     }
 
-    await audit(req.params.id, req.user.id, 'admin.organization_updated', 'organization', req.params.id,
+    await platformAudit(req.params.id, req.user, 'admin.organization_updated', 'organization', req.params.id,
       before.rows[0], { ...rows[0], reason });
 
     return ok(res, rows[0]);
@@ -197,92 +197,7 @@ router.patch('/organizations/:id', authMiddleware, requirePlatformAdmin, async (
   }
 });
 
-// Выдача/снятие статуса администратора платформы — единственный штатный
-// способ поменять users.is_platform_admin. Раньше это делалось только прямым
-// SQL на проде: без следа в журнале аудита и, главное, без отзыва сессий.
-// Флаг зашивается в JWT в момент выдачи токена (signToken: admin: !!user.is_platform_admin),
-// а authMiddleware читает его из payload и НЕ перечитывает из БД — поэтому
-// UPDATE в базе сам по себе не отзывает уже выданные токены: снятый админ
-// остаётся админом до истечения TOKEN_TTL_S (24 часа). Отсюда обязательный
-// revokeAllUserSessions ниже — он ставит отметку pwrev_s:<user_id>, по
-// которой authMiddleware отбрасывает все токены, выданные раньше изменения.
-// Права меняет только действующий platform-admin — как роли внутри
-// организации меняет только её владелец.
-router.patch('/users/:id/platform-admin', authMiddleware, requirePlatformAdmin, async (req, res) => {
-  const { is_platform_admin, reason } = req.body || {};
-  if (typeof is_platform_admin !== 'boolean')
-    return err(res, 400, 'Укажите is_platform_admin: true или false', 'VALIDATION_ERROR');
-  if (!reason?.trim())
-    return err(res, 400, 'Укажите причину изменения', 'VALIDATION_ERROR');
-  // Себе менять нельзя: снятие флага у самого себя мгновенно погасило бы
-  // текущую сессию, а выдача самому себе не имеет смысла (флаг уже есть).
-  // Это же защищает от случайной потери последнего администратора.
-  if (req.params.id === req.user.id)
-    return err(res, 400, 'Нельзя изменить собственный статус администратора платформы', 'VALIDATION_ERROR');
-
-  try {
-    const before = await pool.query(
-      'SELECT id, email, name, org_id, is_platform_admin FROM users WHERE id=$1',
-      [req.params.id]
-    );
-    if (!before.rows.length) return err(res, 404, 'Пользователь не найден', 'NOT_FOUND');
-
-    const { rows } = await pool.query(
-      `UPDATE users SET is_platform_admin=$1, updated_at=NOW() WHERE id=$2
-       RETURNING id, email, name, role, org_id, is_platform_admin`,
-      [is_platform_admin, req.params.id]
-    );
-
-    // Немедленный отзыв в обе стороны: при снятии прав старые admin:true
-    // токены перестают проходить сразу, при выдаче — пользователь
-    // перелогинивается и получает токен с актуальным флагом.
-    //
-    // Порядок важен. UPDATE идёт ПЕРВЫМ, отзыв — вторым: любой токен,
-    // подписанный после отметки отзыва, гарантированно читал уже
-    // закоммиченное новое значение флага. Обратный порядок оставлял окно,
-    // в котором параллельный запрос читал старый флаг до коммита, а токен
-    // подписывал уже после отметки — и переживал отзыв.
-    //
-    // Отзыв обязателен: если он не удался (Redis недоступен), состояние
-    // «в БД прав нет, а старые admin-токены живы» недопустимо и, главное,
-    // недопустимо врать об этом в ответе и в журнале аудита. Откатываем
-    // флаг обратно и отвечаем 503 — ничего не пишем в аудит как успех.
-    try {
-      await revokeAllUserSessions(req.params.id, 'admin');
-    } catch (revokeErr) {
-      console.error('[admin platform-admin update] revoke failed:', revokeErr.message);
-      let rolledBack = true;
-      try {
-        await pool.query('UPDATE users SET is_platform_admin=$1, updated_at=NOW() WHERE id=$2',
-          [before.rows[0].is_platform_admin, req.params.id]);
-      } catch (rollbackErr) {
-        rolledBack = false;
-        console.error('[admin platform-admin update] rollback failed:', rollbackErr.message);
-      }
-      // Честная запись о неудаче — в т.ч. явный маркер рассогласования,
-      // если откат тоже не прошёл (БД изменена, сессии не отозваны).
-      await audit(before.rows[0].org_id, req.user.id, 'admin.platform_admin_change_failed', 'user', req.params.id,
-        { is_platform_admin: before.rows[0].is_platform_admin },
-        { attempted_is_platform_admin: is_platform_admin, reason: reason.trim(),
-          sessions_revoked: false, rolled_back: rolledBack,
-          inconsistent: !rolledBack, error: revokeErr.message });
-      return err(res, 503, rolledBack
-        ? 'Не удалось отозвать сессии пользователя — изменение отменено, попробуйте позже'
-        : 'Не удалось отозвать сессии пользователя, откат изменения тоже не удался — требуется вмешательство администратора',
-        'SERVICE_UNAVAILABLE');
-    }
-
-    await audit(before.rows[0].org_id, req.user.id, 'admin.platform_admin_changed', 'user', req.params.id,
-      { is_platform_admin: before.rows[0].is_platform_admin },
-      { is_platform_admin, reason: reason.trim(), sessions_revoked: true });
-
-    return ok(res, { ...rows[0], sessions_revoked: true });
-  } catch (e) {
-    return dbErr(res, e, '[admin platform-admin update]');
-  }
-});
-
-router.get('/engagement', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.get('/engagement', platformAdminAuthMiddleware, async (req, res) => {
   try {
     const totals = await pool.query('SELECT COUNT(*) AS total FROM organizations');
     const total = +totals.rows[0].total;
@@ -347,7 +262,7 @@ router.get('/engagement', authMiddleware, requirePlatformAdmin, async (req, res)
   }
 });
 
-router.get('/revenue-events', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.get('/revenue-events', platformAdminAuthMiddleware, async (req, res) => {
   try {
     // Единая лента дохода: автоматические платежи ЮKassa + внесённые вручную.
     const { rows } = await pool.query(`
@@ -373,18 +288,18 @@ router.get('/revenue-events', authMiddleware, requirePlatformAdmin, async (req, 
   }
 });
 
-router.post('/revenue-events', authMiddleware, requirePlatformAdmin, async (req, res) => {
+router.post('/revenue-events', platformAdminAuthMiddleware, async (req, res) => {
   const { org_id, amount_kopecks, plan, occurred_at, note } = req.body || {};
   if (!org_id) return err(res, 400, 'Укажите организацию', 'VALIDATION_ERROR');
   if (!amount_kopecks || amount_kopecks <= 0) return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
 
   try {
     const { rows } = await pool.query(`
-      INSERT INTO subscription_events(org_id, plan, amount_kopecks, occurred_at, note, created_by)
+      INSERT INTO subscription_events(org_id, plan, amount_kopecks, occurred_at, note, created_by_platform_admin)
       VALUES($1,$2,$3,$4,$5,$6) RETURNING *
     `, [org_id, plan || null, amount_kopecks, occurred_at || new Date().toISOString().slice(0, 10), note || null, req.user.id]);
 
-    await audit(org_id, req.user.id, 'admin.revenue_event_created', 'subscription_event', rows[0].id, null, { amount_kopecks });
+    await platformAudit(org_id, req.user, 'admin.revenue_event_created', 'subscription_event', rows[0].id, null, { amount_kopecks });
     return ok(res, rows[0], 201);
   } catch (e) {
     return dbErr(res, e, '[admin revenue create]');

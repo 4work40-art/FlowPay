@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, FileText, CreditCard, Calendar, Users, BarChart3,
-  Landmark, Settings, LifeBuoy, LogOut, Crown, Send, Menu, X,
+  Landmark, Settings, LifeBuoy, LogOut, Send, Menu, X,
 } from 'lucide-react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
@@ -54,26 +54,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     '/', '/pricing', '/privacy', '/offer', '/trust', '/accept-invite'].includes(pathname)
     || pathname.startsWith('/public/');
 
+  // Панель управления платформой — чужой контур: другая таблица учётных
+  // записей, другой токен (pa_token), другая точка входа (/admin/login).
+  // AppShell не проверяет здесь клиентскую сессию и не редиректит на /login —
+  // иначе владелец платформы, не залогиненный в клиентский кабинет, улетал бы
+  // в клиентскую форму входа. Доступом и оболочкой заведует app/admin/layout.tsx.
+  const isPlatformAdminArea = pathname.startsWith('/admin');
+
   useEffect(() => {
-    if (isPublic) { setChecked(true); return; }
+    if (isPublic || isPlatformAdminArea) { setChecked(true); return; }
     const token = getToken();
     if (!token) {
       router.replace('/login');
       return;
     }
-    const stored = getStoredUser();
-    if (pathname.startsWith('/admin') && !stored?.is_platform_admin) {
-      router.replace('/dashboard');
-      return;
-    }
-    setUser(stored);
+    setUser(getStoredUser());
     setChecked(true);
-  }, [pathname, router, isPublic]);
+  }, [pathname, router, isPublic, isPlatformAdminArea]);
 
   // Закрывать мобильную шторку «Ещё» при переходе на другую страницу.
   useEffect(() => { setMoreOpen(false); }, [pathname]);
 
-  if (isPublic) return <>{children}</>;
+  if (isPublic || isPlatformAdminArea) return <>{children}</>;
 
   if (!checked) {
     return <div className="loading">Проверка сессии…</div>;
@@ -112,19 +114,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </div>
           ))}
-          {user?.is_platform_admin && (
-            <div className="fp-nav-group">
-              <Link
-                href="/admin"
-                className={`fp-item${pathname.startsWith('/admin') ? ' active' : ''}`}
-                title="Кабинет создателя"
-                aria-label="Кабинет создателя"
-                aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
-              >
-                <Crown strokeWidth={1.5} />
-              </Link>
-            </div>
-          )}
         </nav>
         <div className="fp-foot">
           <a
@@ -199,11 +188,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" className="fp-more-item" onClick={() => setMoreOpen(false)}>
             <Settings strokeWidth={1.5} /> Настройки
           </Link>
-          {user?.is_platform_admin && (
-            <Link href="/admin" className="fp-more-item" onClick={() => setMoreOpen(false)}>
-              <Crown strokeWidth={1.5} /> Кабинет создателя
-            </Link>
-          )}
           <a
             href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
             className="fp-more-item">
