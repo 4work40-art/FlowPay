@@ -54,7 +54,11 @@ router.patch('/me/password', authMiddleware, async (req, res) => {
     // Все прочие сессии завершаются; текущей выдаём свежий токен,
     // чтобы пользователь не вылетел сразу после смены пароля.
     await revokeAllUserSessions(req.user.id);
-    const { token } = signToken({ ...updated.rows[0], is_platform_admin: req.user.is_platform_admin });
+    // Флаг администратора платформы берём из свежей строки БД (RETURNING *),
+    // а НЕ из req.user (там значение из payload старого токена): иначе
+    // пользователь, у которого права уже сняли, продлевал бы себе admin:true
+    // бесконечно, просто меняя пароль.
+    const { token } = signToken(updated.rows[0]);
     await audit(req.user.org_id, req.user.id, 'user.password_changed', 'user', req.user.id, null, null);
     return ok(res, { message: 'Пароль изменён, остальные сессии завершены', access_token: token, expires_in: TOKEN_TTL_S });
   } catch (e) {
