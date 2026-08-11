@@ -1,245 +1,262 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const path = require('node:path');
-const Module = require('node:module');
+const jwt = require('jsonwebtoken');
 
-// Регрессия на отзыв сессий при смене users.is_platform_admin.
-//
-// Что здесь доказывается (и почему это важно):
-// флаг администратора платформы зашивается в JWT в момент выдачи токена
-// (signToken -> admin: !!user.is_platform_admin), а authMiddleware читает
-// его из payload и НЕ перечитывает из БД. Значит `UPDATE users SET
-// is_platform_admin=false` прямым SQL сам по себе НЕ отзывает уже выданные
-// токены: снятый админ остаётся админом до истечения TOKEN_TTL_S (24 часа).
-// Единственное, что гасит старые токены — отметка pwrev_s:<user_id>,
-// которую ставит revokeAllUserSessions() из штатного эндпоинта
-// PATCH /admin/users/:id/platform-admin.
-//
-// Тест выполняется в МОК-РЕЖИМЕ: реальный Redis в песочнице недоступен,
-// поэтому ../src/lib/db подменяется in-memory двойником через require.cache
-// ДО первого require('../src/lib/auth'). Логика authMiddleware при этом
-// исполняется настоящая — подменён только транспорт к Redis.
+// auth.js падает при старте без JWT_SECRET (>=32 символов) — задаём до require.
+process.env.JWT_SECRET = 'test-secret-value-for-unit-tests-32+chars';
 
-process.env.JWT_SECRET = process.env.JWT_SECRET ||
-  'test-secret-for-platform-admin-revocation-suite-0123456789';
-
-// ---------------------------------------------------------------- redis double
-function createRedisDouble() {
-  const store = new Map();
-  return {
-    store,
-    failing: false, // имитация недоступного Redis (см. тест про fail-open)
-    async get(key) {
-      if (this.failing) throw new Error('Redis unavailable (simulated)');
-      return store.has(key) ? store.get(key) : null;
-    },
-    async set(key, value) {
-      if (this.failing) throw new Error('Redis unavailable (simulated)');
-      store.set(key, String(value));
-      return 'OK';
-    },
-  };
-}
-
-const redis = createRedisDouble();
-
-// Подменяем ../src/lib/db до его первой загрузки: настоящий db.js на require
-// открывает соединения с Postgres и Redis, которых в песочнице нет.
+// Подменяем lib/db ДО первого require('../src/lib/auth'): настоящий Redis
+// и Postgres в юнит-тестах не нужны, а поведение при ПАДЕНИИ Redis — это
+// ровно то, что мы здесь и проверяем.
 const dbPath = require.resolve('../src/lib/db');
-require.cache[dbPath] = new Module(dbPath, null);
-require.cache[dbPath].filename = dbPath;
-require.cache[dbPath].path = path.dirname(dbPath);
-require.cache[dbPath].loaded = true;
-require.cache[dbPath].exports = { pool: { query: async () => ({ rows: [] }) }, redis };
+const store = new Map();
+let redisDown = false;
 
-const { signToken, authMiddleware, requirePlatformAdmin, TOKEN_TTL_S } = require('../src/lib/auth');
-
-// ---------------------------------------------------------------- req/res моки
-function mockReq(token) {
-  return { headers: { authorization: `Bearer ${token}` } };
-}
-
-function mockRes() {
-  const captured = { status: null, body: null };
-  return {
-    captured,
-    status(code) { captured.status = code; return this; },
-    json(payload) { captured.body = payload; return this; },
-  };
-}
-
-// Прогон настоящего authMiddleware с моками. Возвращает исход: прошёл
-// дальше по цепочке (passed) или был отвергнут (status/code).
-async function runAuth(token) {
-  const req = mockReq(token);
-  const res = mockRes();
-  let passed = false;
-  await authMiddleware(req, res, () => { passed = true; });
-  return { passed, req, status: res.captured.status, code: res.captured.body?.error?.code };
-}
-
-const OWNER = {
-  id: '11111111-1111-1111-1111-111111111111',
-  org_id: '22222222-2222-2222-2222-222222222222',
-  role: 'owner',
-  email: 'owner@example.com',
+const fakeRedis = {
+  async get(key) {
+    if (redisDown) throw new Error('Redis недоступен (тест)');
+    return store.has(key) ? store.get(key) : null;
+  },
+  async mget(...keys) {
+    if (redisDown) throw new Error('Redis недоступен (тест)');
+    return keys.map((k) => (store.has(k) ? store.get(k) : null));
+  },
+  async set(key, value) {
+    if (redisDown) throw new Error('Redis недоступен (тест)');
+    store.set(key, value);
+    return 'OK';
+  },
+};
+require.cache[dbPath] = {
+  id: dbPath, filename: dbPath, loaded: true, exports: { pool: {}, redis: fakeRedis },
 };
 
-// ---------------------------------------------------------------- тесты
+const {
+  signToken, authMiddleware, requirePlatformAdmin,
+  revokeAllUserSessions, tryRevokeAllUserSessions, readAdminRevocationCutoff,
+} = require('../src/lib/auth');
 
-test('signToken: is_platform_admin=true попадает в токен как admin:true', async () => {
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-  const { passed, req } = await runAuth(token);
-  assert.strictEqual(passed, true, 'свежий токен должен проходить authMiddleware');
-  assert.strictEqual(req.user.is_platform_admin, true);
+// ---------------------------------------------------------------------------
+// Мини-харнесс: прогоняет цепочку authMiddleware -> requirePlatformAdmin
+// и возвращает, чем всё кончилось (статус ошибки или пропуск дальше).
+// ---------------------------------------------------------------------------
+function makeRes() {
+  return {
+    statusCode: null, body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.body = payload; return this; },
+    set() { return this; },
+  };
+}
 
-  // и requirePlatformAdmin такого пользователя пропускает
-  let allowed = false;
-  requirePlatformAdmin(req, mockRes(), () => { allowed = true; });
-  assert.strictEqual(allowed, true, 'admin:true токен проходит requirePlatformAdmin');
+async function runAuth(token, { admin = false } = {}) {
+  const req = { headers: token ? { authorization: `Bearer ${token}` } : {} };
+  const res = makeRes();
+  let passedAuth = false;
+  await authMiddleware(req, res, () => { passedAuth = true; });
+  if (!passedAuth) return { allowed: false, status: res.statusCode, code: res.body?.error?.code, req, res };
+  if (!admin) return { allowed: true, status: 200, req, res };
+  let passedAdmin = false;
+  requirePlatformAdmin(req, res, () => { passedAdmin = true; });
+  return { allowed: passedAdmin, status: passedAdmin ? 200 : res.statusCode, code: res.body?.error?.code, req, res };
+}
+
+function reset() { store.clear(); redisDown = false; }
+
+const ADMIN_USER = { id: 'u-admin', org_id: 'o1', role: 'owner', email: 'a@b.c', is_platform_admin: true };
+const PLAIN_USER = { id: 'u-plain', org_id: 'o1', role: 'accountant', email: 'p@b.c', is_platform_admin: false };
+
+// ---------------------------------------------------------------------------
+// Дефект 1 (PoC пентестера): fail-open при недоступном Redis.
+// ---------------------------------------------------------------------------
+
+test('PoC #1: при недоступном Redis admin-эндпоинт больше не пропускает по токену (503, не 200)', async () => {
+  reset();
+  const { token } = signToken(ADMIN_USER);
+  // Права сняты, отметка отзыва записана — но Redis лежит и прочитать её нельзя.
+  await revokeAllUserSessions(ADMIN_USER.id, 'admin');
+  redisDown = true;
+
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.allowed, false, 'снятый админ не должен пройти на /admin/* при недоступном Redis');
+  assert.strictEqual(r.status, 503);
+  assert.strictEqual(r.code, 'SERVICE_UNAVAILABLE');
+  assert.strictEqual(r.req.user.revocation_checked, false);
 });
 
-test('signToken: is_platform_admin=false даёт admin:false и 403 на requirePlatformAdmin', async () => {
-  const { token } = signToken({ ...OWNER, is_platform_admin: false });
-  const { passed, req } = await runAuth(token);
-  assert.strictEqual(passed, true);
-  assert.strictEqual(req.user.is_platform_admin, false);
-
-  const res = mockRes();
-  let allowed = false;
-  requirePlatformAdmin(req, res, () => { allowed = true; });
-  assert.strictEqual(allowed, false);
-  assert.strictEqual(res.captured.status, 403);
-  assert.strictEqual(res.captured.body.error.code, 'FORBIDDEN');
+test('обычные (не-admin) эндпоинты при недоступном Redis продолжают работать', async () => {
+  reset();
+  const { token } = signToken(PLAIN_USER);
+  redisDown = true;
+  const r = await runAuth(token);
+  assert.strictEqual(r.allowed, true, 'падение Redis не должно класть весь продукт');
+  assert.strictEqual(r.req.user.revocation_checked, false);
 });
 
-test('ГЛАВНОЕ: прямой UPDATE в БД без revokeAllUserSessions НЕ отзывает старый admin-токен', async () => {
-  redis.store.clear();
-
-  // 1. Пользователь вошёл, когда флаг ещё был true — на руках admin:true токен.
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-
-  // 2. Владелец продукта снял флаг прямым SQL:
-  //      UPDATE users SET is_platform_admin=false WHERE id=...
-  //    Это не трогает ни Redis, ни выданные токены — моделируем как
-  //    полное отсутствие каких-либо действий над состоянием сессий.
-  assert.strictEqual(redis.store.size, 0, 'прямой SQL не оставляет следов в Redis');
-
-  // 3. Старый токен продолжает проходить authMiddleware и остаётся админским.
-  const after = await runAuth(token);
-  assert.strictEqual(after.passed, true,
-    'без revokeAllUserSessions старый токен валиден до истечения TTL — это и есть находка аудита v3');
-  assert.strictEqual(after.req.user.is_platform_admin, true,
-    'authMiddleware берёт admin из payload и НЕ перечитывает БД');
-
-  let allowed = false;
-  requirePlatformAdmin(after.req, mockRes(), () => { allowed = true; });
-  assert.strictEqual(allowed, true,
-    'обычный Owner всё ещё проходит в /admin/* — доступ «воспроизводится без изменений»');
+test('здоровый Redis: проверка выполнена, действующий админ проходит', async () => {
+  reset();
+  const { token } = signToken(ADMIN_USER);
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.allowed, true);
+  assert.strictEqual(r.req.user.revocation_checked, true);
 });
 
-test('ГЛАВНОЕ: после revokeAllUserSessions тот же самый токен отвергается', async () => {
-  redis.store.clear();
-
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-  const before = await runAuth(token);
-  assert.strictEqual(before.passed, true, 'до отзыва токен валиден');
-
-  // Штатный путь: PATCH /admin/users/:id/platform-admin вызывает
-  // revokeAllUserSessions(req.params.id). Отметка ставится «сейчас», а токен
-  // выдан в ту же секунду, поэтому для чистоты проверки сдвигаем cutoff
-  // на секунду вперёд — так же, как это происходит в реальности, где
-  // между выдачей токена и снятием прав проходит время.
-  const cutoff = Math.floor(Date.now() / 1000) + 1;
-  await redis.set(`pwrev_s:${OWNER.id}`, String(cutoff));
-
-  const after = await runAuth(token);
-  assert.strictEqual(after.passed, false, 'после отзыва токен НЕ должен проходить');
-  assert.strictEqual(after.status, 401);
-  assert.strictEqual(after.code, 'UNAUTHORIZED');
-  assert.strictEqual(after.req.user, undefined, 'req.user не заполняется у отозванного токена');
+test('revocation_checked=true и когда токен НЕ отозван, и когда проверка просто ничего не нашла', async () => {
+  reset();
+  const { token } = signToken(PLAIN_USER);
+  const r = await runAuth(token);
+  assert.strictEqual(r.req.user.revocation_checked, true);
 });
 
-test('отзыв точечный: отметка pwrev_s другого пользователя не трогает чужие токены', async () => {
-  redis.store.clear();
-
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-  await redis.set('pwrev_s:99999999-9999-9999-9999-999999999999',
-    String(Math.floor(Date.now() / 1000) + 1));
-
-  const { passed } = await runAuth(token);
-  assert.strictEqual(passed, true, 'отзыв у чужого user_id не влияет на этого пользователя');
+test('не-админ на admin-эндпоинте получает 403, а не 503 (порядок проверок сохранён)', async () => {
+  reset();
+  const { token } = signToken(PLAIN_USER);
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.status, 403);
+  assert.strictEqual(r.code, 'FORBIDDEN');
 });
 
-test('токен, выданный ПОСЛЕ отзыва, снова валиден (перелогин восстанавливает доступ)', async () => {
-  redis.store.clear();
+// ---------------------------------------------------------------------------
+// Дефект 1b: revokeAllUserSessions обязана сообщать о неудаче.
+// ---------------------------------------------------------------------------
 
-  const cutoff = Math.floor(Date.now() / 1000) - 5;
-  await redis.set(`pwrev_s:${OWNER.id}`, String(cutoff));
-
-  // Новый вход после отзыва: iat > cutoff, флаг читается из свежей строки БД.
-  const { token } = signToken({ ...OWNER, is_platform_admin: false });
-  const { passed, req } = await runAuth(token);
-  assert.strictEqual(passed, true, 'свежий токен переживает старую отметку отзыва');
-  assert.strictEqual(req.user.is_platform_admin, false, 'и уже не админский');
+test('revokeAllUserSessions пробрасывает ошибку Redis наружу (раньше молча глоталась)', async () => {
+  reset();
+  redisDown = true;
+  await assert.rejects(() => revokeAllUserSessions('u1', 'admin'), /Redis/);
 });
 
-test('точечный отзыв по jti (logout) также отвергает токен', async () => {
-  redis.store.clear();
-
-  const { token, jti } = signToken({ ...OWNER, is_platform_admin: true });
-  await redis.set(`revoked:${jti}`, '1');
-
-  const { passed, status, code } = await runAuth(token);
-  assert.strictEqual(passed, false);
-  assert.strictEqual(status, 401);
-  assert.strictEqual(code, 'UNAUTHORIZED');
+test('tryRevokeAllUserSessions возвращает false вместо исключения — для «мягких» мест', async () => {
+  reset();
+  redisDown = true;
+  assert.strictEqual(await tryRevokeAllUserSessions('u1', 'password'), false);
+  redisDown = false;
+  assert.strictEqual(await tryRevokeAllUserSessions('u1', 'password'), true);
 });
 
-test('граница cutoff: строгое < оставляет живым токен той же секунды', async () => {
-  redis.store.clear();
-
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-  const jwt = require('jsonwebtoken');
-  const { iat } = jwt.verify(token, process.env.JWT_SECRET);
-
-  // cutoff == iat: сравнение `payload.iat < Number(cutoff)` ложно -> токен живёт.
-  // Для смены пароля это осознанное поведение (текущая сессия не должна
-  // вылетать), но для снятия админских прав это окно гонки в <1 секунду —
-  // см. отчёт, пункт «остаточный риск».
-  await redis.set(`pwrev_s:${OWNER.id}`, String(iat));
-  const same = await runAuth(token);
-  assert.strictEqual(same.passed, true,
-    'токен, выданный в ту же секунду, что и отзыв, проходит (гранулярность iat = 1 с)');
-
-  // cutoff на секунду позже — токен уже отвергается.
-  await redis.set(`pwrev_s:${OWNER.id}`, String(iat + 1));
-  const later = await runAuth(token);
-  assert.strictEqual(later.passed, false);
+test('неизвестный scope — явная ошибка, а не тихая запись не в тот ключ', async () => {
+  reset();
+  await assert.rejects(() => revokeAllUserSessions('u1', 'whatever'), /unknown revocation scope/);
 });
 
-test('остаточный риск: при недоступном Redis проверка отзыва пропускается (fail-open)', async () => {
-  redis.store.clear();
+// ---------------------------------------------------------------------------
+// Дефект 2 (PoC пентестера): гонка между двумя типами отзыва.
+// ---------------------------------------------------------------------------
 
-  const { token } = signToken({ ...OWNER, is_platform_admin: true });
-  await redis.set(`pwrev_s:${OWNER.id}`, String(Math.floor(Date.now() / 1000) + 1));
+test('PoC #2: отзыв по смене пароля больше не затирает отзыв по снятию platform-admin', async () => {
+  reset();
+  await revokeAllUserSessions(ADMIN_USER.id, 'admin');   // демоция
+  const { token } = signToken(ADMIN_USER);               // старый admin-токен «до» демоции
+  // Атакующий тут же дёргает смену пароля — она пишет СВОЮ метку, позже по времени.
+  await new Promise((r) => setTimeout(r, 5));
+  await revokeAllUserSessions(ADMIN_USER.id, 'password');
 
-  const revoked = await runAuth(token);
-  assert.strictEqual(revoked.passed, false, 'при живом Redis токен отозван');
+  // Раньше обе метки жили в одном ключе pwrev_s и вторая перезаписывала первую.
+  assert.ok(store.has(`adminrev_s:${ADMIN_USER.id}`), 'метка отзыва по admin-флагу должна сохраниться');
+  assert.ok(store.has(`pwrev_s:${ADMIN_USER.id}`));
+  assert.notStrictEqual(store.get(`adminrev_s:${ADMIN_USER.id}`), store.get(`pwrev_s:${ADMIN_USER.id}`));
+});
 
-  // Тот же отозванный токен при недоступном Redis проходит: authMiddleware
-  // ловит ошибку и продолжает (`[auth] revocation check skipped`).
-  redis.failing = true;
-  try {
-    const bypass = await runAuth(token);
-    assert.strictEqual(bypass.passed, true,
-      'ЗАФИКСИРОВАНО: недоступность Redis снимает отзыв сессий — fail-open');
-    assert.strictEqual(bypass.req.user.is_platform_admin, true);
-  } finally {
-    redis.failing = false;
+test('authMiddleware берёт МАКСИМАЛЬНЫЙ cutoff из обоих ключей', async () => {
+  reset();
+  const uid = ADMIN_USER.id;
+  const now = Date.now();
+  store.set(`pwrev_s:${uid}`, String(now - 10_000));    // старая метка по паролю
+  store.set(`adminrev_s:${uid}`, String(now + 5_000));  // более поздняя метка по демоции
+  const token = jwt.sign(
+    { sub: uid, org: 'o1', role: 'owner', email: 'a@b.c', admin: true, jti: 'j1', iat_ms: now },
+    process.env.JWT_SECRET, { expiresIn: 3600 }
+  );
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.allowed, false, 'токен старше admin-метки обязан быть отклонён');
+  assert.strictEqual(r.status, 401);
+  assert.match(r.res.body?.error?.message || '', /администратора платформы/i);
+});
+
+test('миллисекундная точность: токен, выданный на 10 мс РАНЬШЕ отзыва в ту же секунду, отклоняется', async () => {
+  reset();
+  const uid = ADMIN_USER.id;
+  const base = Date.now();
+  const token = jwt.sign(
+    { sub: uid, org: 'o1', role: 'owner', email: 'a@b.c', admin: true, jti: 'j2', iat_ms: base },
+    process.env.JWT_SECRET, { expiresIn: 3600 }
+  );
+  store.set(`adminrev_s:${uid}`, String(base + 10)); // та же секунда, но позже на 10 мс
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.allowed, false, 'секундная гранулярность давала здесь целое окно для гонки');
+  assert.strictEqual(r.status, 401);
+});
+
+test('токен, выданный ПОСЛЕ отзыва, остаётся валидным (смена пароля не разлогинивает саму себя)', async () => {
+  reset();
+  await revokeAllUserSessions(PLAIN_USER.id, 'password');
+  await new Promise((r) => setTimeout(r, 2));
+  const { token } = signToken(PLAIN_USER);
+  const r = await runAuth(token);
+  assert.strictEqual(r.allowed, true);
+});
+
+test('старые токены без iat_ms и метки в секундах обрабатываются (обратная совместимость)', async () => {
+  reset();
+  const uid = 'legacy-user';
+  const nowS = Math.floor(Date.now() / 1000);
+  const legacy = jwt.sign(
+    { sub: uid, org: 'o1', role: 'owner', email: 'l@b.c', admin: true, jti: 'j3', iat: nowS - 60 },
+    process.env.JWT_SECRET, { expiresIn: 3600 }
+  );
+  store.set(`pwrev_s:${uid}`, String(nowS - 30)); // старый формат: секунды
+  const r = await runAuth(legacy, { admin: true });
+  assert.strictEqual(r.allowed, false, 'метка в секундах должна нормализоваться в мс и отозвать токен');
+  assert.strictEqual(r.status, 401);
+});
+
+// ---------------------------------------------------------------------------
+// Страховка, которой пользуется PATCH /users/me/password при переподписи токена.
+// ---------------------------------------------------------------------------
+
+test('readAdminRevocationCutoff: 0 без метки, значение с меткой, исключение при падении Redis', async () => {
+  reset();
+  assert.strictEqual(await readAdminRevocationCutoff('u1'), 0);
+  await revokeAllUserSessions('u1', 'admin');
+  assert.ok((await readAdminRevocationCutoff('u1')) > 0);
+  redisDown = true;
+  await assert.rejects(() => readAdminRevocationCutoff('u1'));
+});
+
+test('сценарий гонки целиком: демоция во время смены пароля — новый токен не получает admin:true', async () => {
+  reset();
+  const uid = ADMIN_USER.id;
+  // Имитация обработчика PATCH /users/me/password в его новом порядке:
+  // 1) метка отзыва по паролю, 2) чтение флага из БД, 3) подпись,
+  // 4) контроль, что демоция не прилетела после чтения.
+  let dbAdminFlag = true;                       // в БД пока ещё админ
+  await revokeAllUserSessions(uid, 'password'); // (1)
+
+  let token = null;
+  for (let attempt = 0; attempt < 2 && !token; attempt++) {
+    // Небольшая пауза перед фиксацией readAt: гарантирует, что на повторной
+    // попытке readAt заведомо позже отметки отзыва, записанной на первой
+    // попытке — без этого сравнение "cutoff < readAt" по Date.now() иногда
+    // тикает в ту же миллисекунду (реальный retry делает БД round-trip,
+    // здесь всё синхронно и быстрее самого таймера), и тест изредка падает
+    // не из-за дефекта продакшен-кода, а из-за гонки внутри самого теста.
+    await new Promise((r) => setTimeout(r, 2));
+    const readAt = Date.now();
+    const flag = dbAdminFlag;                   // (2) чтение из БД
+    // Гонка: ровно в этот момент проходит демоция (коммит + отзыв).
+    if (attempt === 0) {
+      dbAdminFlag = false;
+      await new Promise((r) => setTimeout(r, 2));
+      await revokeAllUserSessions(uid, 'admin');
+    }
+    const candidate = signToken({ ...ADMIN_USER, is_platform_admin: flag }); // (3)
+    const cutoff = await readAdminRevocationCutoff(uid);                     // (4)
+    if (cutoff < readAt) token = candidate.token;
   }
-});
 
-test('TOKEN_TTL_S: окно жизни неотозванного токена — 24 часа', () => {
-  assert.strictEqual(TOKEN_TTL_S, 86400);
+  assert.ok(token, 'токен всё же должен быть выдан — со второй попытки');
+  const payload = jwt.verify(token, process.env.JWT_SECRET);
+  assert.strictEqual(payload.admin, false, 'выигранная гонка больше не даёт admin:true на 24 часа');
+  const r = await runAuth(token, { admin: true });
+  assert.strictEqual(r.status, 403, 'и на /admin/* такой токен получает 403');
 });

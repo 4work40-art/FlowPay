@@ -236,7 +236,41 @@ router.patch('/users/:id/platform-admin', authMiddleware, requirePlatformAdmin, 
     // Немедленный отзыв в обе стороны: при снятии прав старые admin:true
     // токены перестают проходить сразу, при выдаче — пользователь
     // перелогинивается и получает токен с актуальным флагом.
-    await revokeAllUserSessions(req.params.id);
+    //
+    // Порядок важен. UPDATE идёт ПЕРВЫМ, отзыв — вторым: любой токен,
+    // подписанный после отметки отзыва, гарантированно читал уже
+    // закоммиченное новое значение флага. Обратный порядок оставлял окно,
+    // в котором параллельный запрос читал старый флаг до коммита, а токен
+    // подписывал уже после отметки — и переживал отзыв.
+    //
+    // Отзыв обязателен: если он не удался (Redis недоступен), состояние
+    // «в БД прав нет, а старые admin-токены живы» недопустимо и, главное,
+    // недопустимо врать об этом в ответе и в журнале аудита. Откатываем
+    // флаг обратно и отвечаем 503 — ничего не пишем в аудит как успех.
+    try {
+      await revokeAllUserSessions(req.params.id, 'admin');
+    } catch (revokeErr) {
+      console.error('[admin platform-admin update] revoke failed:', revokeErr.message);
+      let rolledBack = true;
+      try {
+        await pool.query('UPDATE users SET is_platform_admin=$1, updated_at=NOW() WHERE id=$2',
+          [before.rows[0].is_platform_admin, req.params.id]);
+      } catch (rollbackErr) {
+        rolledBack = false;
+        console.error('[admin platform-admin update] rollback failed:', rollbackErr.message);
+      }
+      // Честная запись о неудаче — в т.ч. явный маркер рассогласования,
+      // если откат тоже не прошёл (БД изменена, сессии не отозваны).
+      await audit(before.rows[0].org_id, req.user.id, 'admin.platform_admin_change_failed', 'user', req.params.id,
+        { is_platform_admin: before.rows[0].is_platform_admin },
+        { attempted_is_platform_admin: is_platform_admin, reason: reason.trim(),
+          sessions_revoked: false, rolled_back: rolledBack,
+          inconsistent: !rolledBack, error: revokeErr.message });
+      return err(res, 503, rolledBack
+        ? 'Не удалось отозвать сессии пользователя — изменение отменено, попробуйте позже'
+        : 'Не удалось отозвать сессии пользователя, откат изменения тоже не удался — требуется вмешательство администратора',
+        'SERVICE_UNAVAILABLE');
+    }
 
     await audit(before.rows[0].org_id, req.user.id, 'admin.platform_admin_changed', 'user', req.params.id,
       { is_platform_admin: before.rows[0].is_platform_admin },

@@ -209,10 +209,25 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Угнанные/старые сессии не должны переживать сброс пароля.
-    await revokeAllUserSessions(record.user_id);
+    // Пароль уже сменён и токен сброса погашен, откатывать нечего — но
+    // о неудаче отзыва сообщаем честно (в ответе и в аудите), а не пишем
+    // «сессии завершены» вслепую.
+    let sessionsRevoked = true;
+    try {
+      await revokeAllUserSessions(record.user_id, 'password');
+    } catch (e) {
+      sessionsRevoked = false;
+      console.warn('[reset-password] revoke failed:', e.message);
+    }
 
-    await audit(null, record.user_id, 'auth.password_reset_completed', 'user', record.user_id, null, null);
-    return ok(res, { message: 'Пароль изменён, теперь можно войти' });
+    await audit(null, record.user_id, 'auth.password_reset_completed', 'user', record.user_id, null,
+      { sessions_revoked: sessionsRevoked });
+    return ok(res, {
+      message: sessionsRevoked
+        ? 'Пароль изменён, теперь можно войти'
+        : 'Пароль изменён, но старые сессии могли остаться активными — обратитесь в поддержку, если замечаете чужую активность',
+      sessions_revoked: sessionsRevoked,
+    });
   } catch (e) {
     return dbErr(res, e, '[reset-password]');
   }

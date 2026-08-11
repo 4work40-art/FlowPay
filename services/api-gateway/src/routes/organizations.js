@@ -150,8 +150,11 @@ router.delete('/me', authMiddleware, async (req, res) => {
     await client.query('COMMIT');
 
     // Активные сессии всех пользователей организации гаснут немедленно.
-    const { revokeAllUserSessions } = require('../lib/auth');
-    for (const u of users.rows) await revokeAllUserSessions(u.id);
+    // Пользователи уже удалены из БД, их токены ни к чему не дают доступ,
+    // поэтому неудача отзыва здесь не должна ронять операцию — используем
+    // «мягкий» вариант, который сам логирует ошибку.
+    const { tryRevokeAllUserSessions } = require('../lib/auth');
+    for (const u of users.rows) await tryRevokeAllUserSessions(u.id, 'password');
 
     return ok(res, { message: 'Организация и все данные удалены' });
   } catch (e) {
