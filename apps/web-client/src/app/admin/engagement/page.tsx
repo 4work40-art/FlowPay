@@ -59,15 +59,15 @@ export default function AdminEngagementPage() {
       <div className="grid-2" style={{ marginBottom: 16 }}>
         <div className="card">
           <div className="card-header">Топ по активности за 30 дней</div>
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table>
               <thead><tr><th>Организация</th><th>Счетов</th><th>Платежей</th></tr></thead>
               <tbody>
                 {data.top_active.map(o => (
                   <tr key={o.id}>
-                    <td style={{ fontWeight: 500 }}>{o.name}</td>
-                    <td>{o.invoices_30d}</td>
-                    <td>{o.payments_30d}</td>
+                    <td data-label="Организация" style={{ fontWeight: 500 }}>{o.name}</td>
+                    <td data-label="Счетов">{o.invoices_30d}</td>
+                    <td data-label="Платежей">{o.payments_30d}</td>
                   </tr>
                 ))}
                 {!data.top_active.length && <tr><td colSpan={3} className="empty-state">Нет данных</td></tr>}
@@ -78,14 +78,14 @@ export default function AdminEngagementPage() {
 
         <div className="card">
           <div className="card-header">Приближаются к лимиту</div>
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table>
               <thead><tr><th>Организация</th><th>Использовано</th></tr></thead>
               <tbody>
                 {data.near_limit.map(o => (
                   <tr key={o.id}>
-                    <td style={{ fontWeight: 500 }}>{o.name}</td>
-                    <td>{o.invoice_count} / {o.invoice_limit}</td>
+                    <td data-label="Организация" style={{ fontWeight: 500 }}>{o.name}</td>
+                    <td data-label="Использовано">{o.invoice_count} / {o.invoice_limit}</td>
                   </tr>
                 ))}
                 {!data.near_limit.length && <tr><td colSpan={2} className="empty-state">Никто не близок к лимиту</td></tr>}
@@ -97,14 +97,14 @@ export default function AdminEngagementPage() {
 
       <div className="card">
         <div className="card-header">Давно не заходили (30+ дней)</div>
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table>
             <thead><tr><th>Организация</th><th>Последний вход</th></tr></thead>
             <tbody>
               {data.dormant.map(o => (
                 <tr key={o.id}>
-                  <td style={{ fontWeight: 500 }}>{o.name}</td>
-                  <td style={{ color: 'var(--text2)' }}>{o.last_login_at ? new Date(o.last_login_at).toLocaleDateString('ru-RU') : 'никогда'}</td>
+                  <td data-label="Организация" style={{ fontWeight: 500 }}>{o.name}</td>
+                  <td data-label="Последний вход" style={{ color: 'var(--text2)' }}>{o.last_login_at ? new Date(o.last_login_at).toLocaleDateString('ru-RU') : 'никогда'}</td>
                 </tr>
               ))}
               {!data.dormant.length && <tr><td colSpan={2} className="empty-state">Все активные организации заходили недавно</td></tr>}

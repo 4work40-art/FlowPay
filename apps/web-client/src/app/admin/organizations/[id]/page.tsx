@@ -111,7 +111,7 @@ export default function AdminOrganizationDetailPage() {
 
         <div className="card">
           <div className="card-header">Пользователи · {org.users.length}</div>
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table>
               <thead>
                 <tr><th>Имя</th><th>Роль</th><th>Вход</th></tr>
@@ -119,9 +119,9 @@ export default function AdminOrganizationDetailPage() {
               <tbody>
                 {org.users.map(u => (
                   <tr key={u.id}>
-                    <td style={{ fontWeight: 500 }}>{u.name}<div style={{ color: 'var(--text2)', fontSize: 11 }}>{u.email}</div></td>
-                    <td>{ROLE_LABEL[u.role] ?? u.role}</td>
-                    <td style={{ color: 'var(--text2)', fontSize: 12 }}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('ru-RU') : '—'}</td>
+                    <td data-label="Имя" style={{ fontWeight: 500 }}>{u.name}<div style={{ color: 'var(--text2)', fontSize: 11 }}>{u.email}</div></td>
+                    <td data-label="Роль">{ROLE_LABEL[u.role] ?? u.role}</td>
+                    <td data-label="Вход" style={{ color: 'var(--text2)', fontSize: 12 }}>{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString('ru-RU') : '—'}</td>
                   </tr>
                 ))}
                 {!org.users.length && <tr><td colSpan={3} className="empty-state">Нет пользователей</td></tr>}
