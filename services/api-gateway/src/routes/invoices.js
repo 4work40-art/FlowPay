@@ -307,8 +307,28 @@ const TRANSITIONS = {
   resolve_dispute:  { from: ['DISPUTED'],                                  to: 'UNDER_CONTROL'   },
 };
 
+// Финансово значимые и по сути необратимые переходы: списание безнадёжного
+// долга и открытие/закрытие спора с контрагентом. Доступны только owner и
+// accountant — vendor_admin и readonly не должны иметь возможность принимать
+// такие решения.
+const RESTRICTED_TRANSITIONS = ['write_off', 'open_dispute', 'resolve_dispute'];
+const RESTRICTED_TRANSITION_ROLES = ['owner', 'accountant'];
+
+// Требуем указать основание для переходов, где решение без него неинформативно
+// для последующей выверки/разбора: списание долга (для налоговых/юридических
+// последствий) и открытие спора (чтобы тот, кто будет его разбирать, понимал
+// причину).
+const REASON_REQUIRED_TRANSITIONS = ['write_off', 'open_dispute'];
+
 router.patch('/:id/state', authMiddleware, async (req, res) => {
   const { transition, reason } = req.body || {};
+
+  if (RESTRICTED_TRANSITIONS.includes(transition) && !RESTRICTED_TRANSITION_ROLES.includes(req.user.role))
+    return err(res, 403, 'Недостаточно прав для этого действия — доступно только владельцу или бухгалтеру организации', 'FORBIDDEN');
+
+  if (REASON_REQUIRED_TRANSITIONS.includes(transition) && !(typeof reason === 'string' && reason.trim()))
+    return err(res, 400, 'Укажите причину для этого действия', 'VALIDATION_ERROR');
+
   try {
     const { rows } = await pool.query('SELECT * FROM invoices WHERE id = $1', [req.params.id]);
     if (!rows.length || rows[0].org_id !== req.user.org_id)

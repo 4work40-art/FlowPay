@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Link2, Ban, Unlock, ArrowLeft, Plus, Download, Trash2, X } from 'lucide-react';
 import { api, STATUS_LABEL, STATUS_DESCRIPTION, InvoiceItemInput, formatQty } from '@/lib/api';
+import { getStoredUser } from '@/lib/auth';
 
 type Payment = {
   id: string;
@@ -27,6 +28,16 @@ const TRANSITIONS: Record<string, { label: string; from: string[]; cls: string }
   write_off:        { label: 'Списать',            from: ['OVERDUE'],                                   cls: 'btn-secondary'   },
   archive:          { label: 'В архив',           from: ['PAID'],                                      cls: 'btn-secondary'    },
 };
+
+// Списание, открытие и закрытие спора — финансово значимые, по сути
+// необратимые решения. На бэкенде (PATCH /invoices/:id/state) доступны
+// только owner и accountant — здесь просто скрываем кнопки для остальных
+// ролей, чтобы не предлагать действие, которое всё равно вернёт 403.
+const RESTRICTED_TRANSITIONS = new Set(['write_off', 'open_dispute', 'resolve_dispute']);
+const RESTRICTED_TRANSITION_ROLES = new Set(['owner', 'accountant']);
+// Требуем причину для списания и открытия спора — без неё решение
+// неинформативно для того, кто будет его потом разбирать.
+const REASON_REQUIRED_TRANSITIONS = new Set(['write_off', 'open_dispute']);
 
 function statusTagClass(status: string) {
   if (status === 'OVERDUE' || status === 'DISPUTED') return 'tag tag-accent';
@@ -139,9 +150,17 @@ export default function InvoiceDetailPage() {
   };
 
   const doTransition = async (key: string) => {
+    let reason: string | undefined;
+    if (REASON_REQUIRED_TRANSITIONS.has(key)) {
+      const label = TRANSITIONS[key]?.label ?? key;
+      const input = window.prompt(`Укажите причину действия «${label}» — это обязательно`);
+      if (input === null) return; // отменено пользователем
+      if (!input.trim()) { alert('Причина обязательна для этого действия'); return; }
+      reason = input.trim();
+    }
     setActing(true);
     try {
-      await api.invoices.transition(id, key);
+      await api.invoices.transition(id, key, reason);
       load();
     } catch (e: any) {
       alert('Ошибка: ' + e.message);
@@ -154,7 +173,11 @@ export default function InvoiceDetailPage() {
   if (error) return <div className="error-box"><strong>Ошибка:</strong> {error}</div>;
   if (!inv) return null;
 
-  const available = Object.entries(TRANSITIONS).filter(([, t]) => t.from.includes(inv.status));
+  const userRole = getStoredUser()?.role;
+  const available = Object.entries(TRANSITIONS).filter(([key, t]) =>
+    t.from.includes(inv.status) &&
+    (!RESTRICTED_TRANSITIONS.has(key) || RESTRICTED_TRANSITION_ROLES.has(userRole ?? ''))
+  );
 
   return (
     <div>
