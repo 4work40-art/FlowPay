@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import DocumentDropzone, { Recognized } from '@/components/DocumentDropzone';
 import type { InvoiceItemInput } from '@/lib/api';
+import { sanitizeDecimalInput } from '@/lib/decimalInput';
 
 type Counterparty = { id: string; name: string; inn: string | null };
 type ItemRow = { name: string; quantity: string; unit: string; price: string };
@@ -224,7 +225,7 @@ export default function NewInvoicePage() {
                 <input
                   type="text" inputMode="decimal" required autoFocus
                   placeholder="150000"
-                  value={amount} onChange={e => setAmount(e.target.value)}
+                  value={amount} onChange={e => setAmount(sanitizeDecimalInput(e.target.value))}
                 />
               </div>
               <div className="form-group">
@@ -284,11 +285,11 @@ export default function NewInvoicePage() {
                   <input style={{ flex: 3 }} placeholder="Наименование" value={row.name}
                     onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, name: e.target.value } : r))} />
                   <input style={{ flex: 1 }} placeholder="Кол-во" inputMode="decimal" value={row.quantity}
-                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, quantity: e.target.value } : r))} />
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, quantity: sanitizeDecimalInput(e.target.value) } : r))} />
                   <input style={{ flex: 1 }} placeholder="Ед." value={row.unit}
                     onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, unit: e.target.value } : r))} />
                   <input style={{ flex: 1 }} placeholder="Цена, ₽" inputMode="decimal" value={row.price}
-                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, price: e.target.value } : r))} />
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, price: sanitizeDecimalInput(e.target.value) } : r))} />
                   <button type="button" className="btn btn-sm" onClick={() => setItemRows(rows => rows.filter((_, idx) => idx !== i))}>✕</button>
                 </div>
               ))}

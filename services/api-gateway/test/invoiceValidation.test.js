@@ -25,9 +25,20 @@ test('validateInvoiceCreate: amount_kopecks не целое число — ош�
   assert.match(error, /целым числом/i);
 });
 
-test('validateInvoiceCreate: amount_kopecks <= 0 — ошибка', () => {
-  assert.ok(validateInvoiceCreate({ amount_kopecks: 0, due_date: '2026-09-01' }));
-  assert.ok(validateInvoiceCreate({ amount_kopecks: -500, due_date: '2026-09-01' }));
+test('validateInvoiceCreate: amount_kopecks <= 0 — ошибка "больше нуля"', () => {
+  const errZero = validateInvoiceCreate({ amount_kopecks: 0, due_date: '2026-09-01' });
+  const errNeg = validateInvoiceCreate({ amount_kopecks: -500, due_date: '2026-09-01' });
+  assert.match(errZero, /больше нуля/i);
+  assert.match(errNeg, /больше нуля/i);
+});
+
+// Регрессия: NaN (например, из-за мусорного ввода вроде "-500abc" на фронте)
+// должен давать отдельное сообщение "указана некорректно", а не вводящее
+// в заблуждение "должна быть больше нуля".
+test('validateInvoiceCreate: amount_kopecks = NaN — отдельное сообщение "некорректно", не про "больше нуля"', () => {
+  const error = validateInvoiceCreate({ amount_kopecks: NaN, due_date: '2026-09-01' });
+  assert.match(error, /некорректно/i);
+  assert.doesNotMatch(error, /больше нуля/i);
 });
 
 test('validateInvoiceCreate: корректные данные — null (нет ошибки)', () => {
@@ -53,6 +64,15 @@ test('validateBulkInvoiceItem: некорректная сумма — ошиб�
   assert.match(error, /сумм/i);
   const error2 = validateBulkInvoiceItem({ amount_kopecks: 100.5, due_date: '2026-09-01' });
   assert.match(error2, /сумм/i);
+});
+
+test('validateBulkInvoiceItem: amount_kopecks = NaN — "некорректно", amount_kopecks = 0 — "больше нуля"', () => {
+  const errNaN = validateBulkInvoiceItem({ amount_kopecks: NaN, due_date: '2026-09-01' });
+  assert.match(errNaN, /некорректно/i);
+  assert.doesNotMatch(errNaN, /больше нуля/i);
+
+  const errZero = validateBulkInvoiceItem({ amount_kopecks: 0, due_date: '2026-09-01' });
+  assert.match(errZero, /больше нуля/i);
 });
 
 test('validateBulkInvoiceItem: корректная строка — null', () => {

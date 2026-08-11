@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { InvoiceItemInput } from '@/lib/api';
+import { sanitizeDecimalInput } from '@/lib/decimalInput';
 
 type Counterparty = { id: string; name: string; inn: string | null; type: string };
 type ItemRow = { name: string; quantity: string; unit: string; price: string };
@@ -148,11 +149,11 @@ export default function NewOutgoingInvoicePage() {
                   <input className="input" style={{ flex: 3, minWidth: 160 }} placeholder="Наименование" value={row.name}
                     onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, name: e.target.value } : r))} />
                   <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Кол-во" inputMode="decimal" value={row.quantity}
-                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, quantity: e.target.value } : r))} />
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, quantity: sanitizeDecimalInput(e.target.value) } : r))} />
                   <input className="input" style={{ flex: 1, minWidth: 70 }} placeholder="Ед." value={row.unit}
                     onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, unit: e.target.value } : r))} />
                   <input className="input" style={{ flex: 1, minWidth: 90 }} placeholder="Цена, ₽" inputMode="decimal" value={row.price}
-                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, price: e.target.value } : r))} />
+                    onChange={e => setItemRows(rows => rows.map((r, idx) => idx === i ? { ...r, price: sanitizeDecimalInput(e.target.value) } : r))} />
                   <button type="button" className="btn btn-icon btn-secondary" disabled={itemRows.length === 1}
                     onClick={() => setItemRows(rows => rows.filter((_, idx) => idx !== i))} aria-label="Удалить позицию">
                     <X size={14} strokeWidth={1.5} />
