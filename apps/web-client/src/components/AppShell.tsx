@@ -51,7 +51,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
 
   const isPublic = ['/login', '/register', '/forgot-password', '/reset-password',
-    '/', '/pricing', '/privacy', '/offer', '/accept-invite'].includes(pathname)
+    '/', '/pricing', '/privacy', '/offer', '/trust', '/accept-invite'].includes(pathname)
     || pathname.startsWith('/public/');
 
   useEffect(() => {
