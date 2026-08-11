@@ -271,19 +271,27 @@ textarea.input { min-height: 90px; resize: vertical; }
    и требовала скролла внутри самой навигации, что неудобно для одной руки.
    Вместо этого на мобильных рельс прячется целиком, а вместо него —
    отдельная фиксированная нижняя панель (.fp-bottom-nav, разметка в
-   AppShell.tsx) с ключевыми разделами + шторка «Ещё» для остального. */
+   AppShell.tsx) с ключевыми разделами + шторка «Ещё» для остального.
+   .fp-bottom-nav скрыт на десктопе БАЗОВЫМ (не media-запросным) правилом
+   ниже — важно, что оно объявлено ДО media-запроса, который её показывает
+   на мобильных: при равной специфичности побеждает правило, идущее позже
+   в каскаде, значит показ на мобильных (объявлен позже) корректно
+   переопределяет базовое скрытие, а не наоборот. Раньше было наоборот
+   (безусловный display:flex шёл ПОСЛЕ media-запроса на скрытие) — из-за
+   этого панель была видна на любой ширине экрана, включая десктоп.
+   .fp-more-sheet/.fp-more-backdrop такой проблемы не имеют — их видимость
+   управляется через transform/условный рендер в JSX, а не через display. */
+.fp-bottom-nav { display: none; }
 @media (max-width: 768px) {
   .app-shell { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
   .sidebar, .fp-rail { display: none; }
   .main-content { padding: var(--space-3); padding-bottom: calc(72px + var(--space-3) + env(safe-area-inset-bottom, 0px)); }
-}
-@media (min-width: 769px) {
-  .fp-bottom-nav, .fp-more-sheet, .fp-more-backdrop { display: none; }
+  .fp-bottom-nav { display: flex; }
 }
 
 .fp-bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: flex; align-items: stretch; justify-content: space-around;
+  align-items: stretch; justify-content: space-around;
   background: rgba(255,255,255,.9); backdrop-filter: blur(20px);
   box-shadow: 0 -8px 20px -14px rgba(109,90,190,.35);
   border-top: 1px solid var(--row-divider);
