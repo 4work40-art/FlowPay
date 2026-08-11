@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware, requirePlatformAdmin } = require('../lib/auth');
+const { authMiddleware, requirePlatformAdmin, revokeAllUserSessions } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { PLANS } = require('../lib/plans');
 
@@ -122,7 +122,7 @@ router.get('/organizations/:id', authMiddleware, requirePlatformAdmin, async (re
     if (!orgRows.rows.length) return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
 
     const users = await pool.query(
-      `SELECT id, email, name, role, is_active, last_login_at, created_at
+      `SELECT id, email, name, role, is_active, is_platform_admin, last_login_at, created_at
        FROM users WHERE org_id=$1 ORDER BY created_at`,
       [req.params.id]
     );
@@ -194,6 +194,57 @@ router.patch('/organizations/:id', authMiddleware, requirePlatformAdmin, async (
     return ok(res, rows[0]);
   } catch (e) {
     return dbErr(res, e, '[admin org update]');
+  }
+});
+
+// Выдача/снятие статуса администратора платформы — единственный штатный
+// способ поменять users.is_platform_admin. Раньше это делалось только прямым
+// SQL на проде: без следа в журнале аудита и, главное, без отзыва сессий.
+// Флаг зашивается в JWT в момент выдачи токена (signToken: admin: !!user.is_platform_admin),
+// а authMiddleware читает его из payload и НЕ перечитывает из БД — поэтому
+// UPDATE в базе сам по себе не отзывает уже выданные токены: снятый админ
+// остаётся админом до истечения TOKEN_TTL_S (24 часа). Отсюда обязательный
+// revokeAllUserSessions ниже — он ставит отметку pwrev_s:<user_id>, по
+// которой authMiddleware отбрасывает все токены, выданные раньше изменения.
+// Права меняет только действующий platform-admin — как роли внутри
+// организации меняет только её владелец.
+router.patch('/users/:id/platform-admin', authMiddleware, requirePlatformAdmin, async (req, res) => {
+  const { is_platform_admin, reason } = req.body || {};
+  if (typeof is_platform_admin !== 'boolean')
+    return err(res, 400, 'Укажите is_platform_admin: true или false', 'VALIDATION_ERROR');
+  if (!reason?.trim())
+    return err(res, 400, 'Укажите причину изменения', 'VALIDATION_ERROR');
+  // Себе менять нельзя: снятие флага у самого себя мгновенно погасило бы
+  // текущую сессию, а выдача самому себе не имеет смысла (флаг уже есть).
+  // Это же защищает от случайной потери последнего администратора.
+  if (req.params.id === req.user.id)
+    return err(res, 400, 'Нельзя изменить собственный статус администратора платформы', 'VALIDATION_ERROR');
+
+  try {
+    const before = await pool.query(
+      'SELECT id, email, name, org_id, is_platform_admin FROM users WHERE id=$1',
+      [req.params.id]
+    );
+    if (!before.rows.length) return err(res, 404, 'Пользователь не найден', 'NOT_FOUND');
+
+    const { rows } = await pool.query(
+      `UPDATE users SET is_platform_admin=$1, updated_at=NOW() WHERE id=$2
+       RETURNING id, email, name, role, org_id, is_platform_admin`,
+      [is_platform_admin, req.params.id]
+    );
+
+    // Немедленный отзыв в обе стороны: при снятии прав старые admin:true
+    // токены перестают проходить сразу, при выдаче — пользователь
+    // перелогинивается и получает токен с актуальным флагом.
+    await revokeAllUserSessions(req.params.id);
+
+    await audit(before.rows[0].org_id, req.user.id, 'admin.platform_admin_changed', 'user', req.params.id,
+      { is_platform_admin: before.rows[0].is_platform_admin },
+      { is_platform_admin, reason: reason.trim(), sessions_revoked: true });
+
+    return ok(res, { ...rows[0], sessions_revoked: true });
+  } catch (e) {
+    return dbErr(res, e, '[admin platform-admin update]');
   }
 });
 

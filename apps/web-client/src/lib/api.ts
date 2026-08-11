@@ -344,6 +344,11 @@ export const api = {
     organization: (id: string) => req(`/admin/organizations/${id}`),
     updateOrganization: (id: string, body: { plan?: string; invoice_limit?: number; is_active?: boolean; reason: string }) =>
       req(`/admin/organizations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    // Смена статуса администратора платформы: сервер также немедленно
+    // отзывает все сессии этого пользователя, поэтому старый токен с
+    // admin:true перестаёт работать сразу, а не через 24 часа.
+    setPlatformAdmin: (userId: string, body: { is_platform_admin: boolean; reason: string }) =>
+      req(`/admin/users/${userId}/platform-admin`, { method: 'PATCH', body: JSON.stringify(body) }),
     engagement: () => req('/admin/engagement'),
     revenueEvents: () => req('/admin/revenue-events'),
     createRevenueEvent: (body: { org_id: string; amount_kopecks: number; plan?: string; occurred_at?: string; note?: string }) =>
