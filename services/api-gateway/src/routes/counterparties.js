@@ -210,6 +210,28 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+// Карточка контрагента (страница /counterparties/:id) — та же выборка
+// долга/числа счетов, что и в списке выше, для одной записи.
+router.get('/:id', authMiddleware, async (req, res) => {
+  const orgId = req.user.org_id;
+  try {
+    const { rows } = await pool.query(`
+      SELECT c.*,
+        COUNT(i.id) AS invoice_count,
+        COALESCE(SUM(i.amount_kopecks - i.paid_kopecks)
+          FILTER (WHERE i.status NOT IN ('PAID','ARCHIVED')), 0) AS debt_kopecks
+      FROM counterparties c
+      LEFT JOIN invoices i ON i.counterparty_id = c.id
+      WHERE c.id = $1 AND c.org_id = $2
+      GROUP BY c.id
+    `, [req.params.id, orgId]);
+    if (!rows.length) return err(res, 404, 'Контрагент не найден', 'NOT_FOUND');
+    return ok(res, { ...rows[0], debt_display: fmt(rows[0].debt_kopecks) });
+  } catch (e) {
+    return dbErr(res, e, '[counterparty get]');
+  }
+});
+
 // Прогнозный риск просрочки — объяснимая эвристика на истории последних
 // счетов контрагента (см. lib/overdueRisk.js), а НЕ изменение существующего
 // counterparties.trust_score. trust_score — статичное поле 0..100, которое

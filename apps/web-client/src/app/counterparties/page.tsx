@@ -1,6 +1,7 @@
 'use client';
-import { Fragment, useEffect, useState, useCallback } from 'react';
-import { BarChart3, Plus, X, ArrowDown, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { BarChart3, Plus, X, ArrowDown, AlertTriangle, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { innError } from '@/lib/inn';
 
@@ -10,24 +11,12 @@ type Counterparty = {
   invoice_count: string; debt_kopecks: string; debt_display: string; is_active: boolean;
 };
 
-// Прогнозный риск просрочки — отдельная объяснимая эвристика, не тот же
-// trust_score, что уже показан на Дашборде/в Аналитике (см. api.counterparties.overdueRisk).
-type OverdueRisk = {
-  available: boolean; message?: string;
-  level?: 'low' | 'medium' | 'high'; level_label?: string;
-  sample_size?: number; overdue_count?: number; overdue_share_pct?: number;
-  avg_delay_days?: number; trend?: 'improving' | 'worsening' | 'stable' | null;
-  explanation?: string;
-};
-
-const RISK_CHIP_CLASS: Record<string, string> = { low: 'good', medium: 'warn', high: 'bad' };
-const TREND_LABEL: Record<string, string> = { improving: 'улучшается', worsening: 'ухудшается', stable: 'без изменений' };
-
 const TYPE_LABEL: Record<string, string> = { vendor: 'Поставщик', contractor: 'Подрядчик', customer: 'Заказчик' };
 
 const EMPTY_FORM = { name: '', inn: '', kpp: '', phone: '', email: '', address: '', type: 'vendor' };
 
 export default function CounterpartiesPage() {
+  const router = useRouter();
   const [items,   setItems]   = useState<Counterparty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -43,21 +32,6 @@ export default function CounterpartiesPage() {
   // Похожее название при другом ИНН — контрагент уже создан, это просто
   // дружелюбное уведомление после сохранения, не требует решения.
   const [duplicateNotice, setDuplicateNotice] = useState<string>('');
-  // Раскрытая карточка контрагента с прогнозом риска просрочки — грузится
-  // лениво по клику на строку, чтобы не бить эндпоинт для всего списка сразу.
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [riskById, setRiskById] = useState<Record<string, OverdueRisk | 'loading' | 'error'>>({});
-
-  const toggleRisk = (id: string) => {
-    if (expandedId === id) { setExpandedId(null); return; }
-    setExpandedId(id);
-    if (!riskById[id]) {
-      setRiskById(prev => ({ ...prev, [id]: 'loading' }));
-      api.counterparties.overdueRisk(id)
-        .then(res => setRiskById(prev => ({ ...prev, [id]: res.data as OverdueRisk })))
-        .catch(() => setRiskById(prev => ({ ...prev, [id]: 'error' })));
-    }
-  };
 
   const load = useCallback(() => {
     setLoading(true);
@@ -251,46 +225,18 @@ export default function CounterpartiesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => {
-                  const risk = riskById[c.id];
-                  const expanded = expandedId === c.id;
-                  return (
-                    <Fragment key={c.id}>
-                      <tr onClick={() => toggleRisk(c.id)} style={{ cursor: 'pointer' }}>
-                        <td style={{ width: 24, color: 'var(--color-text-secondary)' }}>
-                          {expanded ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
-                        </td>
-                        <td data-label="Название" style={{ fontWeight: 500 }}>{c.name}</td>
-                        <td data-label="ИНН" className="text-muted">{c.inn ?? '—'}</td>
-                        <td data-label="Тип">{TYPE_LABEL[c.type] ?? c.type}</td>
-                        <td data-label="Счетов">{c.invoice_count}</td>
-                        <td data-label="Долг" style={{ fontWeight: 600, color: +c.debt_kopecks > 0 ? 'var(--color-accent-700)' : 'inherit' }}>{c.debt_display}</td>
-                      </tr>
-                      {expanded && (
-                        <tr>
-                          <td colSpan={6} style={{ background: 'var(--color-surface-muted)', padding: '14px 20px' }}>
-                            {risk === 'loading' && <div className="text-muted">Считаем прогноз риска просрочки…</div>}
-                            {risk === 'error' && <div className="text-muted">Не удалось загрузить прогноз риска</div>}
-                            {risk && risk !== 'loading' && risk !== 'error' && !risk.available && (
-                              <div className="text-muted">{risk.message}</div>
-                            )}
-                            {risk && risk !== 'loading' && risk !== 'error' && risk.available && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                                <span className={`health-chip ${RISK_CHIP_CLASS[risk.level!]}`}><i />{risk.level_label}</span>
-                                <span style={{ fontSize: 13 }}>{risk.explanation}</span>
-                                {risk.trend && (
-                                  <span className="text-muted" style={{ fontSize: 12 }}>
-                                    Тренд: {TREND_LABEL[risk.trend]}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {filtered.map(c => (
+                  <tr key={c.id} onClick={() => router.push(`/counterparties/${c.id}`)} style={{ cursor: 'pointer' }}>
+                    <td style={{ width: 24, color: 'var(--color-text-secondary)' }}>
+                      <ChevronRight size={14} strokeWidth={1.5} />
+                    </td>
+                    <td data-label="Название" style={{ fontWeight: 500 }}>{c.name}</td>
+                    <td data-label="ИНН" className="text-muted">{c.inn ?? '—'}</td>
+                    <td data-label="Тип">{TYPE_LABEL[c.type] ?? c.type}</td>
+                    <td data-label="Счетов">{c.invoice_count}</td>
+                    <td data-label="Долг" style={{ fontWeight: 600, color: +c.debt_kopecks > 0 ? 'var(--color-accent-700)' : 'inherit' }}>{c.debt_display}</td>
+                  </tr>
+                ))}
                 {!filtered.length && (
                   <tr><td colSpan={6} className="empty-state">{query ? 'Ничего не найдено' : 'Контрагентов пока нет'}</td></tr>
                 )}
