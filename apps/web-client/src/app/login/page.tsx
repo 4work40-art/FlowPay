@@ -65,7 +65,7 @@ export default function LoginPage() {
 
         <div className="fp-footer">
           <ShieldCheck strokeWidth={1.5} />
-          <span>Данные шифруются, каждая организация видит только свои счета</span>
+          <span>Каждая организация видит только свои счета и контрагентов — подробнее на странице <Link href="/trust" className="fp-link">«Доверие и безопасность»</Link></span>
         </div>
       </form>
     </div>
