@@ -40,11 +40,11 @@ function AcceptInviteForm() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-gradient)' }}>
       <div className="card" style={{ width: 380, padding: 28 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 22, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
-          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Приглашение в организацию</div>
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13, marginTop: 4 }}>Приглашение в организацию</div>
         </div>
 
         {infoError && <div className="error-box">{infoError} — <Link href="/login">Войти</Link></div>}
@@ -59,13 +59,13 @@ function AcceptInviteForm() {
 
             <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Ваше имя</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }} />
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid var(--row-divider)', borderRadius: 6 }} />
 
             <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Придумайте пароль</label>
             <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', marginBottom: 16, border: '1px solid #ddd', borderRadius: 6 }} />
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 16, border: '1px solid var(--row-divider)', borderRadius: 6 }} />
 
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#666', marginBottom: 16, cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 16, cursor: 'pointer' }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
               <span>
                 Я согласен(на) с <Link href="/privacy" target="_blank">политикой конфиденциальности</Link> и даю

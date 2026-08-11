@@ -16,7 +16,7 @@ export default function LandingPage() {
   if (!checked) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg-gradient)' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ fontSize: 20, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
         <nav style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14 }}>
@@ -44,27 +44,27 @@ export default function LandingPage() {
           <div className="card" style={{ padding: 20 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Все счета в одном месте</div>
-            <div style={{ fontSize: 13, color: '#777' }}>Статусы, сроки оплаты, остаток долга по каждому контрагенту</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Статусы, сроки оплаты, остаток долга по каждому контрагенту</div>
           </div>
           <div className="card" style={{ padding: 20 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>💳</div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Частичные оплаты</div>
-            <div style={{ fontSize: 13, color: '#777' }}>Система сама пересчитывает остаток после каждого платежа</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Система сама пересчитывает остаток после каждого платежа</div>
           </div>
           <div className="card" style={{ padding: 20 }}>
             <div style={{ fontSize: 24, marginBottom: 8 }}>🔒</div>
             <div style={{ fontWeight: 600, marginBottom: 4 }}>Данные изолированы</div>
-            <div style={{ fontSize: 13, color: '#777' }}>Каждая организация видит только свои счета и контрагентов</div>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Каждая организация видит только свои счета и контрагентов</div>
           </div>
         </div>
       </main>
 
-      <footer style={{ textAlign: 'center', padding: '24px 0', color: '#999', fontSize: 12 }}>
-        <Link href="/privacy" style={{ color: '#999' }}>Политика конфиденциальности</Link>
+      <footer style={{ textAlign: 'center', padding: '24px 0', color: 'var(--color-text-faint)', fontSize: 12 }}>
+        <Link href="/privacy" style={{ color: 'var(--color-text-faint)' }}>Политика конфиденциальности</Link>
         {' · '}
-        <Link href="/offer" style={{ color: '#999' }}>Публичная оферта</Link>
+        <Link href="/offer" style={{ color: 'var(--color-text-faint)' }}>Публичная оферта</Link>
         {' · '}
-        <Link href="/trust" style={{ color: '#999' }}>Безопасность и защита данных</Link>
+        <Link href="/trust" style={{ color: 'var(--color-text-faint)' }}>Безопасность и защита данных</Link>
       </footer>
     </div>
   );

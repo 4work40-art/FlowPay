@@ -2,9 +2,9 @@ import Link from 'next/link';
 
 export default function TrustPage() {
   return (
-    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: '#333' }}>
+    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: 'var(--color-text)' }}>
       <h1 style={{ fontSize: 22, marginBottom: 8 }}>Безопасность и защита данных</h1>
-      <p style={{ color: '#777', marginBottom: 24 }}>
+      <p style={{ color: 'var(--color-text-secondary)', marginBottom: 24 }}>
         Ниже — как устроена защита данных клиентов в «Счёт&amp;Контроль» на практике,
         без общих обещаний. Это описание принципов работы сервиса, а не сертификат
         и не заключение независимого аудитора.
@@ -63,7 +63,7 @@ export default function TrustPage() {
       использования сервиса — в{' '}
       <Link href="/offer">публичной оферте</Link>.</p>
 
-      <p style={{ marginTop: 24, color: '#888', fontSize: 13 }}>
+      <p style={{ marginTop: 24, color: 'var(--color-text-secondary)', fontSize: 13 }}>
         Эта страница описывает текущую реализацию сервиса и не является
         юридическим заверением о соответствии конкретным стандартам, результатом
         независимого аудита безопасности или гарантией отсутствия инцидентов.
