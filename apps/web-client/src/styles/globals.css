@@ -513,3 +513,44 @@ tr.clickable { cursor: pointer; }
 .fp-footer { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--row-divider); color: var(--color-text-secondary); font-size: 11.5px; }
 .fp-footer svg { width: 14px; height: 14px; flex-shrink: 0; }
 .fp-foot-link { text-align: center; font-size: 13px; margin-top: 6px; }
+
+/* — auth split-screen (login "story" panel) —
+   Слева — брендовая панель с иллюстративным примером метрик и цитатой,
+   справа — форма. На узких экранах (тот же брейкпоинт 768px, что и у
+   остального приложения) левая панель скрывается целиком — остаётся
+   только форма, как в исходном .fp-wrap. */
+.fp-split { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; background: var(--color-bg-gradient); }
+.fp-story {
+  position: relative; overflow: hidden; color: #fff;
+  background: linear-gradient(160deg, var(--color-accent) 0%, #9b6bf0 55%, #b79cf5 100%);
+  padding: 56px 56px 40px; display: flex; flex-direction: column; justify-content: space-between;
+}
+.fp-story-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-heading); font-weight: 600; font-size: 18px; }
+.fp-story-brand-mark { width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,.22); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.fp-story h1 { color: #fff; font-weight: 600; font-size: clamp(26px, 3vw, 36px); line-height: 1.25; max-width: 10em; margin: 48px 0 16px; }
+.fp-story-sub { font-size: 15px; line-height: 1.55; color: rgba(255,255,255,.86); max-width: 30em; margin: 0; }
+.fp-proof-card { margin-top: 32px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); backdrop-filter: blur(6px); border-radius: var(--radius-lg); padding: 18px 22px; max-width: 380px; }
+.fp-proof-label { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.72); margin-bottom: 8px; font-weight: 700; }
+.fp-proof-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.2); font-size: 13.5px; color: rgba(255,255,255,.92); }
+.fp-proof-row:last-child { border-bottom: none; }
+.fp-proof-row b { font-weight: 700; font-size: 14.5px; color: #fff; }
+.fp-quote { font-size: 12.5px; line-height: 1.6; color: rgba(255,255,255,.8); max-width: 32em; margin-top: 26px; border-left: 2px solid rgba(255,255,255,.4); padding-left: 14px; }
+.fp-quote b { color: #fff; font-weight: 600; }
+
+.fp-auth-side { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+
+@media (max-width: 768px) {
+  .fp-split { grid-template-columns: 1fr; }
+  .fp-story { display: none; }
+}
+
+/* — login method tabs — only "Email" works, the rest are honestly disabled */
+.fp-method-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: var(--color-surface-muted); padding: 4px; border-radius: var(--radius-md); margin-bottom: 20px; }
+.fp-method-tab {
+  border: none; background: transparent; padding: 8px 4px; font-size: 11.5px; font-weight: 600;
+  color: var(--color-text-secondary); border-radius: 9px; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.fp-method-tab.active { background: var(--color-surface); color: var(--color-accent); box-shadow: var(--shadow-card-sm); }
+.fp-method-tab:disabled { color: var(--color-text-faint); cursor: not-allowed; opacity: .7; }
+.fp-method-tab-badge { font-size: 9px; font-weight: 600; letter-spacing: .02em; color: var(--color-text-faint); }
