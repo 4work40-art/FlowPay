@@ -63,6 +63,8 @@ export default function LandingPage() {
         <Link href="/privacy" style={{ color: '#999' }}>Политика конфиденциальности</Link>
         {' · '}
         <Link href="/offer" style={{ color: '#999' }}>Публичная оферта</Link>
+        {' · '}
+        <Link href="/trust" style={{ color: '#999' }}>Безопасность и защита данных</Link>
       </footer>
     </div>
   );
