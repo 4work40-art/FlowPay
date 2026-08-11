@@ -136,7 +136,7 @@ export default function DocumentDropzone({ onRecognized }: { onRecognized: (r: R
               Перетащите сюда счёт на оплату или платёжное поручение
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 10 }}>
-              PDF, JPG, PNG или Excel/CSV — поля формы заполнятся автоматически, проверьте перед сохранением
+              PDF, JPG, PNG или Excel/CSV — поля формы заполнятся автоматически, если удастся их распознать; проверьте перед сохранением
             </div>
             <button type="button" className="btn btn-sm" onClick={() => inputRef.current?.click()}>
               Выбрать файл
