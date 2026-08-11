@@ -10,6 +10,7 @@ import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 import ReminderPopup from './ReminderPopup';
 import ThemeToggle from './ThemeToggle';
+import GlobalSearch from './GlobalSearch';
 
 // Пункты навигации сгруппированы по смыслу (а не одним сплошным списком) —
 // так рельс навигации легче просматривать и не путаются несвязанные разделы.
@@ -94,6 +95,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-shell">
       <aside className="fp-rail">
         <div className="fp-brand" aria-hidden="true" />
+        {/* Глобальный поиск (⌘K) — только клиентский кабинет, никогда не
+            рендерится в /admin/* (см. проверку isPlatformAdminArea выше:
+            весь AppShell для этого пути возвращает только {children}).
+            Кнопка видна на десктопной рельсе; сам компонент также вешает
+            глобальный слушатель ⌘K, работающий с любого клиентского экрана
+            независимо от того, скрыт ли рельс на мобильной ширине. */}
+        <GlobalSearch />
         <nav className="fp-nav" aria-label="Основная навигация">
           {NAV_GROUPS.map((group, gi) => (
             <div className="fp-nav-group" key={gi}>

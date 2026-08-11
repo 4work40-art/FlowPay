@@ -116,7 +116,11 @@ router.get('/rating', authMiddleware, async (req, res) => {
 
 router.get('/', authMiddleware, async (req, res) => {
   const orgId = req.user.org_id;
+  const q = req.query.q ? String(req.query.q).trim() : null; // поиск по названию/ИНН (глобальный поиск ⌘K)
   try {
+    const params = [orgId];
+    let where = 'WHERE c.org_id = $1 AND c.is_active = true';
+    if (q) { params.push(`%${q}%`); where += ` AND (c.name ILIKE $${params.length} OR c.inn ILIKE $${params.length})`; }
     const { rows } = await pool.query(`
       SELECT c.*,
         COUNT(i.id) AS invoice_count,
@@ -124,9 +128,9 @@ router.get('/', authMiddleware, async (req, res) => {
           FILTER (WHERE i.status NOT IN ('PAID','ARCHIVED')), 0) AS debt_kopecks
       FROM counterparties c
       LEFT JOIN invoices i ON i.counterparty_id = c.id
-      WHERE c.org_id = $1 AND c.is_active = true
+      ${where}
       GROUP BY c.id ORDER BY c.name
-    `, [orgId]);
+    `, params);
     return ok(res, { items: rows.map(r => ({ ...r, debt_display: fmt(r.debt_kopecks) })) });
   } catch (e) {
     return dbErr(res, e, '[counterparties]');
