@@ -85,6 +85,7 @@ function decorate(row) {
 router.get('/', authMiddleware, async (req, res) => {
   const orgId = req.user.org_id;
   const { status, counterparty_id } = req.query;
+  const q = req.query.q ? String(req.query.q).trim() : null; // поиск по номеру счёта/названию контрагента (глобальный поиск ⌘K)
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -93,6 +94,7 @@ router.get('/', authMiddleware, async (req, res) => {
     let where = 'WHERE oi.org_id = $1';
     if (status) { params.push(status); where += ` AND oi.status = $${params.length}`; }
     if (counterparty_id) { params.push(counterparty_id); where += ` AND oi.counterparty_id = $${params.length}`; }
+    if (q) { params.push(`%${q}%`); where += ` AND (oi.number ILIKE $${params.length} OR c.name ILIKE $${params.length})`; }
 
     const { rows } = await pool.query(`
       SELECT oi.*, c.name AS counterparty_name
@@ -102,7 +104,7 @@ router.get('/', authMiddleware, async (req, res) => {
       ORDER BY oi.issue_date DESC, oi.created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, limit, offset]);
-    const cnt = await pool.query(`SELECT COUNT(*) FROM outgoing_invoices oi ${where}`, params);
+    const cnt = await pool.query(`SELECT COUNT(*) FROM outgoing_invoices oi LEFT JOIN counterparties c ON oi.counterparty_id = c.id ${where}`, params);
 
     return ok(res, { items: rows.map(decorate), total: +cnt.rows[0].count, page, limit });
   } catch (e) {

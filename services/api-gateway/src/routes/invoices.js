@@ -16,6 +16,7 @@ router.get('/', authMiddleware, async (req, res) => {
   const dueFrom = req.query.due_from; // YYYY-MM-DD, по due_date (для календаря оплат)
   const dueTo   = req.query.due_to;
   const counterpartyId = req.query.counterparty_id; // для карточки контрагента — история счетов с ним
+  const q      = req.query.q ? String(req.query.q).trim() : null; // поиск по номеру счёта/названию контрагента (глобальный поиск ⌘K)
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -29,6 +30,7 @@ router.get('/', authMiddleware, async (req, res) => {
     if (dueFrom) { params.push(dueFrom); where += ` AND i.due_date >= $${params.length}`; }
     if (dueTo)   { params.push(dueTo);   where += ` AND i.due_date <= $${params.length}`; }
     if (counterpartyId) { params.push(counterpartyId); where += ` AND i.counterparty_id = $${params.length}`; }
+    if (q) { params.push(`%${q}%`); where += ` AND (i.number ILIKE $${params.length} OR c.name ILIKE $${params.length})`; }
 
     const { rows } = await pool.query(`
       SELECT i.*, c.name AS counterparty_name,
@@ -40,7 +42,7 @@ router.get('/', authMiddleware, async (req, res) => {
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, limit, offset]);
 
-    const cnt = await pool.query(`SELECT COUNT(*) FROM invoices i ${where}`, params);
+    const cnt = await pool.query(`SELECT COUNT(*) FROM invoices i LEFT JOIN counterparties c ON i.counterparty_id = c.id ${where}`, params);
 
     return ok(res, {
       items: rows.map(r => ({

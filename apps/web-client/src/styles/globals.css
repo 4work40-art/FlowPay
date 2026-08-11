@@ -263,6 +263,75 @@ textarea.input { min-height: 90px; resize: vertical; }
   .fp-item-logout::after { display: none; }
 }
 
+/* — global search (⌘K) —
+   Кнопка-триггер сделана в стиле остальных пунктов рельса (.fp-item —
+   квадрат 48x48, иконка по центру), но помещена ДО .fp-nav, а не внутри
+   него: это не пункт навигации, а отдельное действие, и визуальный
+   разделитель снизу (margin-bottom) подчёркивает эту границу. Подсказка
+   с шорткатом — тот же паттерн всплывающей плашки, что и у .fp-item-logout
+   (текст через ::after, показывается по hover/focus), только справа не
+   помещается на такой узкой рельсе — используем нативный title как
+   резервный вариант и не дублируем тем же ::after, чтобы не плодить два
+   всплывающих текста одновременно. */
+.fp-search-trigger {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--row-divider);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.fp-search-backdrop {
+  position: fixed; inset: 0; z-index: 60; background: rgba(38,36,60,.45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 16px;
+}
+.fp-search-modal {
+  width: 100%; max-width: 560px; max-height: 70vh;
+  background: var(--color-surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hero); overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.fp-search-field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px var(--space-4); border-bottom: 1px solid var(--row-divider); flex-shrink: 0;
+}
+.fp-search-field svg { width: 18px; height: 18px; color: var(--color-text-secondary); flex-shrink: 0; }
+.fp-search-spinner { animation: fp-search-spin .8s linear infinite; }
+@keyframes fp-search-spin { to { transform: rotate(360deg); } }
+.fp-search-field input {
+  flex: 1; border: none; outline: none; background: transparent;
+  font: 500 15px var(--font-body); color: var(--color-text);
+}
+.fp-search-field input::placeholder { color: var(--color-text-faint); }
+.fp-search-esc {
+  font: 600 11px var(--font-body); color: var(--color-text-secondary);
+  background: var(--color-surface-muted); border-radius: 6px; padding: 3px 7px; flex-shrink: 0;
+}
+.fp-search-results { overflow-y: auto; padding: var(--space-2); }
+.fp-search-hint { padding: var(--space-4); text-align: center; color: var(--color-text-secondary); font-size: 13px; }
+.fp-search-group + .fp-search-group { margin-top: 6px; }
+.fp-search-group-label {
+  font: 700 11px var(--font-body); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-text-faint); padding: 8px 10px 4px;
+}
+.fp-search-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 9px 10px; border-radius: var(--radius-sm); border: none; background: transparent;
+  cursor: pointer;
+}
+.fp-search-item svg { width: 17px; height: 17px; color: var(--color-text-secondary); flex-shrink: 0; }
+.fp-search-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.fp-search-item-title {
+  font-size: 13.5px; font-weight: 600; color: var(--color-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fp-search-item-subtitle {
+  font-size: 12px; color: var(--color-text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fp-search-item:hover, .fp-search-item.active { background: var(--color-surface-muted); }
+.fp-search-item.active .fp-search-item-title { color: var(--color-accent-dark); }
+
 .main-content { flex: 1; overflow-y: auto; padding: var(--space-6); }
 
 /* — mobile navigation (<=768px) —
