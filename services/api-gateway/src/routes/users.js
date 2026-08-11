@@ -1,8 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { authMiddleware, revokeAllUserSessions, signToken, TOKEN_TTL_S,
-        readAdminRevocationCutoff } = require('../lib/auth');
+const { authMiddleware, revokeAllUserSessions, signToken, TOKEN_TTL_S } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { rateLimit } = require('../lib/rateLimit');
 
@@ -76,34 +75,20 @@ router.patch('/me/password', authMiddleware, passwordChangeLimiter, async (req, 
       console.warn('[password change] revoke failed:', e.message);
     }
 
-    // Флаг администратора платформы перечитываем из БД ПОСЛЕ записи
-    // собственной отметки отзыва, а не берём из RETURNING * прошлого UPDATE
-    // и тем более не из req.user (payload старого токена). Иначе снимаемый
-    // админ выигрывал гонку: читал is_platform_admin=true до коммита демоции,
-    // а подписывал токен уже после обеих отметок отзыва.
-    // Дополнительная страховка от микросекундного окна между SELECT и
-    // подписью: если отметка отзыва по admin-флагу оказалась НЕ старше
-    // момента чтения, значит демоция могла произойти после нашего SELECT —
-    // перечитываем и переподписываем, а при неопределённости токен не выдаём.
+    // Свежий токен выдаётся только если отзыв реально записан — иначе
+    // старый токен и так продолжает работать, и выдавать новый бессмысленно.
+    // Раньше здесь была ещё защита от гонки с демоцией platform-admin
+    // (перечитывание флага из БД + сверка с отметкой adminrev_s): она больше
+    // не нужна — клиентский токен вообще не несёт признака админа платформы,
+    // выиграть этой гонкой стало нечего.
     let token = null;
     if (sessionsRevoked) {
-      for (let attempt = 0; attempt < 2 && !token; attempt++) {
-        const readAt = Date.now();
-        const fresh = await pool.query(
-          'SELECT id, email, name, role, org_id, is_platform_admin FROM users WHERE id=$1',
-          [req.user.id]
-        );
-        if (!fresh.rows.length) return err(res, 404, 'Пользователь не найден', 'NOT_FOUND');
-        const candidate = signToken(fresh.rows[0]);
-        let adminCutoff;
-        try {
-          adminCutoff = await readAdminRevocationCutoff(req.user.id);
-        } catch (e) {
-          console.warn('[password change] admin cutoff read failed:', e.message);
-          break; // неизвестно — токен не выдаём, пользователь войдёт заново
-        }
-        if (adminCutoff < readAt) token = candidate.token;
-      }
+      const fresh = await pool.query(
+        'SELECT id, email, name, role, org_id FROM users WHERE id=$1',
+        [req.user.id]
+      );
+      if (!fresh.rows.length) return err(res, 404, 'Пользователь не найден', 'NOT_FOUND');
+      token = signToken(fresh.rows[0]).token;
     }
 
     await audit(req.user.org_id, req.user.id, 'user.password_changed', 'user', req.user.id, null,

@@ -70,7 +70,6 @@ router.post('/register', registerLimiter, async (req, res) => {
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: org.id, org_name: org.name, plan: org.plan,
-        is_platform_admin: false,
       }
     }, 201);
   } catch (e) {
@@ -113,7 +112,6 @@ router.post('/login', loginLimiter, async (req, res) => {
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: u.org_id, org_name: u.org_name, plan: u.plan,
-        is_platform_admin: !!u.is_platform_admin
       }
     });
   } catch (e) {
@@ -297,7 +295,6 @@ router.post('/accept-invite', async (req, res) => {
       user: {
         id: u.id, email: u.email, name: u.name, role: u.role,
         org_id: invite.org_id, org_name: orgRows.rows[0].name, plan: orgRows.rows[0].plan,
-        is_platform_admin: false,
       }
     }, 201);
   } catch (e) {

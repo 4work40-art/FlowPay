@@ -10,15 +10,21 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
 }
 const TOKEN_TTL_S = 86400; // 24h
 
-// Ключи отметок отзыва. РАЗНЫЕ для разных причин: раньше и смена пароля,
-// и снятие platform-admin писали в один pwrev_s:<id>, и отзыв по паролю,
-// выполненный на долю секунды позже, «перекрывал» отзыв по снятию прав —
-// токен, подписанный после обоих, проходил проверку с admin:true (TOCTOU).
-// Теперь метки независимы, а authMiddleware берёт максимум из обеих.
+// Ключ отметки отзыва клиентских сессий (смена/сброс пароля, удаление
+// организации). Раньше здесь был второй scope — 'admin', отзыв по изменению
+// флага users.is_platform_admin. Флага больше нет: администратор платформы
+// вынесен в отдельную таблицу platform_admins и отдельный контур
+// (lib/platformAuth.js) со своим пространством ключей pa_*. Клиентский JWT
+// больше вообще не несёт признака админа, поэтому и отзывать по нему нечего.
 const REVOKE_KEYS = {
   password: (id) => `pwrev_s:${id}`,
-  admin:    (id) => `adminrev_s:${id}`,
 };
+
+// Тип токена платформенного администратора. Здесь нужен ровно для того,
+// чтобы такой токен ОТВЕРГАТЬ: подпись у обоих контуров одна (общий
+// JWT_SECRET), и без явной проверки платформенный токен прошёл бы в
+// клиентские роуты как пользователь с sub=<id админа> и без org_id.
+const PLATFORM_TOKEN_TYPE = 'platform_admin';
 
 // Отметки хранятся в МИЛЛИСЕКУНДАХ. Стандартный jwt-claim iat — в секундах,
 // поэтому сравнение «iat < cutoff» имело гранулярность в секунду: всё, что
@@ -41,11 +47,14 @@ function normalizeCutoff(raw) {
   return v < 1e12 ? v * 1000 : v;
 }
 
+// Клиентский токен. Признака «администратор платформы» здесь больше нет
+// ни в каком виде: управление платформой живёт в отдельном контуре и
+// доступно только по токену из signPlatformAdminToken.
 function signToken(user) {
   const jti = randomUUID();
   const token = jwt.sign(
     { sub: user.id, org: user.org_id, role: user.role, email: user.email,
-      admin: !!user.is_platform_admin, jti, iat_ms: Date.now() },
+      jti, iat_ms: Date.now() },
     JWT_SECRET,
     { expiresIn: TOKEN_TTL_S }
   );
@@ -64,58 +73,50 @@ async function authMiddleware(req, res, next) {
     return err(res, 401, 'Токен недействителен или истёк', 'UNAUTHORIZED');
   }
 
+  // Токен платформенного администратора в клиентский контур не пускаем.
+  // Подпись у него валидна (секрет общий), но это учётная запись из другой
+  // таблицы: без org_id и role она провалилась бы в клиентские выборки как
+  // «пользователь без организации» с непредсказуемыми последствиями.
+  // Симметрично platformAdminAuthMiddleware, который отвергает клиентские.
+  if (payload.typ === PLATFORM_TOKEN_TYPE)
+    return err(res, 401, 'Токен администратора платформы не действует в клиентском кабинете', 'UNAUTHORIZED');
+
   // Факт выполнения проверки отзыва фиксируется явно: true — обращение к
   // Redis состоялось (независимо от результата), false — упало. Раньше
-  // ошибка просто глоталась, и запрос шёл дальше с доверием к payload —
-  // на время недоступности Redis снятый админ снова становился админом.
+  // ошибка просто глоталась, и запрос шёл дальше с доверием к payload.
   let revocationChecked = false;
-  let revokedByAdminChange = false;
   try {
-    const [revoked, pwCutoffRaw, adminCutoffRaw] = await redis.mget(
+    const [revoked, pwCutoffRaw] = await redis.mget(
       `revoked:${payload.jti}`,
       REVOKE_KEYS.password(payload.sub),
-      REVOKE_KEYS.admin(payload.sub),
     );
     revocationChecked = true;
     if (revoked) return err(res, 401, 'Токен отозван', 'UNAUTHORIZED');
 
-    // Отметок две (пароль и смена platform-admin) — действует более поздняя.
-    const pwCutoff    = normalizeCutoff(pwCutoffRaw);
-    const adminCutoff = normalizeCutoff(adminCutoffRaw);
-    const cutoff = Math.max(pwCutoff, adminCutoff);
-    revokedByAdminChange = adminCutoff >= pwCutoff;
+    const cutoff = normalizeCutoff(pwCutoffRaw);
     if (cutoff && issuedAtMs(payload) < cutoff)
-      return err(res, 401, revokedByAdminChange
-        ? 'Права администратора платформы изменены — войдите заново'
-        : 'Сессия завершена после смены пароля — войдите заново', 'UNAUTHORIZED');
+      return err(res, 401, 'Сессия завершена после смены пароля — войдите заново', 'UNAUTHORIZED');
   } catch (e) {
-    // Обычные эндпоинты продолжают работать (падение Redis не должно класть
-    // весь продукт), но факт непроверенности отзыва протаскивается дальше —
-    // requirePlatformAdmin на нём фейлится закрыто.
+    // Клиентские эндпоинты продолжают работать (падение Redis не должно
+    // класть весь продукт); признак непроверенности протаскивается дальше.
+    // Для управления платформой это уже не имеет значения — она вынесена в
+    // отдельный контур, который на непроверенном отзыве отвечает 503.
     revocationChecked = false;
-    console.warn('[auth] revocation check FAILED (admin routes will fail closed):', e.message);
+    console.warn('[auth] revocation check FAILED:', e.message);
   }
 
   req.user = {
     id: payload.sub, org_id: payload.org, role: payload.role, email: payload.email,
-    is_platform_admin: !!payload.admin, jti: payload.jti,
+    jti: payload.jti,
     revocation_checked: revocationChecked,
   };
   next();
 }
 
-function requirePlatformAdmin(req, res, next) {
-  if (!req.user?.is_platform_admin) return err(res, 403, 'Требуются права администратора платформы', 'FORBIDDEN');
-  // Асимметрия намеренная: только для /admin/* мы отказываемся доверять
-  // admin:true из токена, если актуальность прав подтвердить не удалось.
-  // Цена ошибки здесь — полный доступ к платформе, поэтому fail-closed.
-  if (req.user.revocation_checked !== true)
-    return err(res, 503, 'Проверка актуальности прав администратора временно недоступна, попробуйте позже', 'SERVICE_UNAVAILABLE');
-  next();
-}
-
 // Отзыв всех активных сессий пользователя.
-// scope: 'password' — смена/сброс пароля, 'admin' — изменение platform-admin.
+// scope: сейчас единственный — 'password' (смена/сброс пароля, удаление
+// организации). Параметр сохранён явным, чтобы случайная опечатка в имени
+// scope падала ошибкой, а не писала отметку не в тот ключ.
 // Ошибку НЕ глотает: вызывающий обязан решить, что делать с неудачей
 // (раньше молчаливый catch приводил к аудит-логу, врущему про отзыв).
 // Отметка живёт дольше TTL токена, чтобы пережить все выданные до неё токены.
@@ -124,14 +125,6 @@ async function revokeAllUserSessions(userId, scope = 'password') {
   if (!keyFn) throw new Error(`unknown revocation scope: ${scope}`);
   await redis.set(keyFn(userId), String(Date.now()), 'EX', TOKEN_TTL_S + 3600);
   return true;
-}
-
-// Текущая отметка отзыва по смене platform-admin, в миллисекундах (0 — нет).
-// Нужна тем, кто подписывает новый токен с флагом admin: позволяет убедиться,
-// что между чтением флага из БД и подписью не прилетела демоция.
-// Ошибку Redis не глотает — вызывающий обязан трактовать её как «неизвестно».
-async function readAdminRevocationCutoff(userId) {
-  return normalizeCutoff(await redis.get(REVOKE_KEYS.admin(userId)));
 }
 
 // Вариант для мест, где неудача отзыва не должна ронять операцию
@@ -148,6 +141,6 @@ async function tryRevokeAllUserSessions(userId, scope = 'password') {
 }
 
 module.exports = {
-  JWT_SECRET, TOKEN_TTL_S, signToken, authMiddleware, requirePlatformAdmin,
-  revokeAllUserSessions, tryRevokeAllUserSessions, readAdminRevocationCutoff,
+  JWT_SECRET, TOKEN_TTL_S, PLATFORM_TOKEN_TYPE, signToken, authMiddleware,
+  revokeAllUserSessions, tryRevokeAllUserSessions,
 };
