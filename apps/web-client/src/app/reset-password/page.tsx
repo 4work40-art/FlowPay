@@ -32,11 +32,11 @@ function ResetPasswordForm() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-gradient)' }}>
       <div className="card" style={{ width: 360, padding: 28 }}>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 22, fontWeight: 700 }}>📄 Счёт&amp;Контроль</div>
-          <div style={{ color: '#888', fontSize: 13, marginTop: 4 }}>Новый пароль</div>
+          <div style={{ color: 'var(--color-text-secondary)', fontSize: 13, marginTop: 4 }}>Новый пароль</div>
         </div>
 
         {!token ? (
@@ -50,10 +50,10 @@ function ResetPasswordForm() {
             {error && <div className="error-box" style={{ marginBottom: 12 }}>{error}</div>}
             <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Новый пароль</label>
             <input type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid #ddd', borderRadius: 6 }} />
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 14, border: '1px solid var(--row-divider)', borderRadius: 6 }} />
             <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>Повторите пароль</label>
             <input type="password" required minLength={8} value={confirm} onChange={e => setConfirm(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', marginBottom: 18, border: '1px solid #ddd', borderRadius: 6 }} />
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 18, border: '1px solid var(--row-divider)', borderRadius: 6 }} />
             <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%' }}>
               {loading ? 'Сохраняем…' : 'Сохранить новый пароль'}
             </button>

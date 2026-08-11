@@ -1,6 +1,6 @@
 export default function PrivacyPage() {
   return (
-    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: '#333' }}>
+    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: 'var(--color-text)' }}>
       <h1 style={{ fontSize: 22, marginBottom: 20 }}>Политика конфиденциальности</h1>
 
       <p>Настоящая Политика определяет порядок обработки персональных данных
@@ -45,7 +45,7 @@ export default function PrivacyPage() {
       данными в разделе «Настройки» — удаление необратимо и выполняется
       немедленно.</p>
 
-      <p style={{ marginTop: 24, color: '#888', fontSize: 13 }}>
+      <p style={{ marginTop: 24, color: 'var(--color-text-secondary)', fontSize: 13 }}>
         Действует с момента регистрации в Сервисе.
       </p>
     </div>

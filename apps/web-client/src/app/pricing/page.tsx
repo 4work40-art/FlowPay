@@ -20,7 +20,7 @@ export default function PublicPricingPage() {
   }, []);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg-gradient)' }}>
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', maxWidth: 1100, margin: '0 auto' }}>
         <Link href="/" style={{ fontSize: 20, fontWeight: 700, color: 'inherit', textDecoration: 'none' }}>📄 Счёт&amp;Контроль</Link>
         <nav style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14 }}>
@@ -31,7 +31,7 @@ export default function PublicPricingPage() {
 
       <main style={{ maxWidth: 900, margin: '40px auto', padding: '0 24px' }}>
         <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>Тарифы</h1>
-        <p style={{ textAlign: 'center', color: '#666', marginBottom: 32 }}>
+        <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)', marginBottom: 32 }}>
           Без скрытых доплат — то, что видите здесь, то и оплачиваете. Помесячно, без обязательного годового контракта.
         </p>
 
@@ -40,7 +40,7 @@ export default function PublicPricingPage() {
             <div key={key} className="card" style={{ padding: 20 }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>{p.label}</div>
               <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{priceLabel(p)}</div>
-              <div style={{ fontSize: 13, color: '#777', marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>
                 {p.invoice_limit === null ? 'Без ограничений по счетам' : `До ${p.invoice_limit} счетов`}
               </div>
               <Link href="/register" className="btn btn-sm" style={{ width: '100%', textAlign: 'center', display: 'block' }}>

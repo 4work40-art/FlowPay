@@ -1,6 +1,6 @@
 export default function OfferPage() {
   return (
-    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: '#333' }}>
+    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.6, color: 'var(--color-text)' }}>
       <h1 style={{ fontSize: 22, marginBottom: 20 }}>Публичная оферта</h1>
 
       <p>Настоящий документ является публичной офертой на использование
@@ -34,7 +34,7 @@ export default function OfferPage() {
       <p>Регистрация в Сервисе означает полное и безоговорочное принятие
       условий настоящей оферты.</p>
 
-      <p style={{ marginTop: 24, color: '#888', fontSize: 13 }}>
+      <p style={{ marginTop: 24, color: 'var(--color-text-secondary)', fontSize: 13 }}>
         Действует с момента регистрации в Сервисе.
       </p>
     </div>

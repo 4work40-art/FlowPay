@@ -67,6 +67,144 @@
   --shadow-sm: var(--shadow-card-sm);
   --shadow-md: var(--shadow-card);
   --shadow-lg: var(--shadow-hero);
+
+  --fp-rail-bg: rgba(255,255,255,.55);
+  --fp-bottom-nav-bg: rgba(255,255,255,.9);
+  --fp-avatar-text: #5a4a8c;
+  --fp-avatar-gradient: linear-gradient(135deg,#ffd6e8,#d6c9fb);
+  --fp-brand-tile: #d8d3f7;
+  --fp-tooltip-bg: #26243c;
+  --fp-tooltip-text: #fff;
+  --fp-overlay: rgba(38,36,60,.45);
+  color-scheme: light;
+}
+
+/* ═══════════════════════════════════════════════
+   Тёмная тема — переопределение переменных светлой
+   палитры. Включается атрибутом data-theme="dark" на
+   <html> (см. inline-скрипт в app/layout.tsx и
+   ThemeToggle.tsx). Все компоненты уже написаны через
+   var(--color-*) и т.п., поэтому подхватывают палитру
+   централизованно, без точечных патчей по классам.
+   ═══════════════════════════════════════════════ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg-gradient: linear-gradient(135deg, #1c1a2e 0%, #241b2c 45%, #1a1830 100%);
+  --color-surface: #262340;
+  --color-surface-muted: #2d2a4a;
+  --color-surface-muted-alt: #363258;
+  --color-text: #eeecf9;
+  --color-text-secondary: #a9a4c9;
+  --color-text-faint: #7a76a0;
+
+  --color-accent: #8b89f5;
+  --color-accent-dark: #a5a3f8;
+  --accent-gradient: linear-gradient(135deg, #8b89f5, #b085f5);
+  --accent-gradient-alt: linear-gradient(135deg, #8b89f5, #e874ac);
+
+  --tag-pink-bg: #4a2438;   --tag-pink-text: #f290b8;
+  --tag-blue-bg: #292a52;   --tag-blue-text: #9aa4ff;
+  --tag-yellow-bg: #453a1e; --tag-yellow-text: #f0c455;
+  --tag-green-bg: #1e4433;  --tag-green-text: #5fd8a2;
+  --tag-neutral-bg: #363258; --tag-neutral-text: #a9a4c9;
+
+  --row-divider: #3a3660;
+  --color-divider: var(--row-divider);
+
+  --color-bg: #201d38;
+  --color-neutral-100: #2d2a4a;
+  --color-neutral-200: #363258;
+  --color-neutral-300: #3a3660;
+  --color-neutral-400: #4a4675;
+  --color-neutral-500: #7a76a0;
+  --color-neutral-600: #a9a4c9;
+  --color-neutral-700: #c1bce0;
+  --color-neutral-800: #d9d6ee;
+  --color-neutral-900: #eeecf9;
+
+  --shadow-card: 0 14px 32px -14px rgba(0,0,0,.55);
+  --shadow-card-sm: 0 12px 26px -14px rgba(0,0,0,.5);
+  --shadow-nav: 8px 0 30px -14px rgba(0,0,0,.5);
+  --shadow-btn: 0 10px 22px -8px rgba(139,137,245,.45);
+  --shadow-hero: 0 24px 50px -18px rgba(0,0,0,.6);
+
+  --shadow-sm: var(--shadow-card-sm);
+  --shadow-md: var(--shadow-card);
+  --shadow-lg: var(--shadow-hero);
+
+  --fp-rail-bg: rgba(38,35,64,.65);
+  --fp-bottom-nav-bg: rgba(38,35,64,.92);
+  --fp-avatar-text: #2a2348;
+  --fp-avatar-gradient: linear-gradient(135deg,#f0c4dd,#c6b6f5);
+  --fp-brand-tile: #4a4675;
+  --fp-tooltip-bg: #12111e;
+  --fp-tooltip-text: #eeecf9;
+  --fp-overlay: rgba(10,9,20,.6);
+}
+
+/* Уважаем системную тему только когда пользователь ещё не сделал явный
+   выбор (нет ни .dark, ни атрибута — но чтобы не мигать неправильной
+   темой при первой загрузке, реальное решение принимает inline-скрипт
+   в <head>, который синхронно проставляет data-theme ДО первой отрисовки;
+   этот media-блок — лишь подстраховка на случай, если скрипт почему-то
+   не отработал). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+
+    --color-bg-gradient: linear-gradient(135deg, #1c1a2e 0%, #241b2c 45%, #1a1830 100%);
+    --color-surface: #262340;
+    --color-surface-muted: #2d2a4a;
+    --color-surface-muted-alt: #363258;
+    --color-text: #eeecf9;
+    --color-text-secondary: #a9a4c9;
+    --color-text-faint: #7a76a0;
+
+    --color-accent: #8b89f5;
+    --color-accent-dark: #a5a3f8;
+    --accent-gradient: linear-gradient(135deg, #8b89f5, #b085f5);
+    --accent-gradient-alt: linear-gradient(135deg, #8b89f5, #e874ac);
+
+    --tag-pink-bg: #4a2438;   --tag-pink-text: #f290b8;
+    --tag-blue-bg: #292a52;   --tag-blue-text: #9aa4ff;
+    --tag-yellow-bg: #453a1e; --tag-yellow-text: #f0c455;
+    --tag-green-bg: #1e4433;  --tag-green-text: #5fd8a2;
+    --tag-neutral-bg: #363258; --tag-neutral-text: #a9a4c9;
+
+    --row-divider: #3a3660;
+    --color-divider: var(--row-divider);
+
+    --color-bg: #201d38;
+    --color-neutral-100: #2d2a4a;
+    --color-neutral-200: #363258;
+    --color-neutral-300: #3a3660;
+    --color-neutral-400: #4a4675;
+    --color-neutral-500: #7a76a0;
+    --color-neutral-600: #a9a4c9;
+    --color-neutral-700: #c1bce0;
+    --color-neutral-800: #d9d6ee;
+    --color-neutral-900: #eeecf9;
+
+    --shadow-card: 0 14px 32px -14px rgba(0,0,0,.55);
+    --shadow-card-sm: 0 12px 26px -14px rgba(0,0,0,.5);
+    --shadow-nav: 8px 0 30px -14px rgba(0,0,0,.5);
+    --shadow-btn: 0 10px 22px -8px rgba(139,137,245,.45);
+    --shadow-hero: 0 24px 50px -18px rgba(0,0,0,.6);
+
+    --shadow-sm: var(--shadow-card-sm);
+    --shadow-md: var(--shadow-card);
+    --shadow-lg: var(--shadow-hero);
+
+    --fp-rail-bg: rgba(38,35,64,.65);
+    --fp-bottom-nav-bg: rgba(38,35,64,.92);
+    --fp-avatar-text: #2a2348;
+    --fp-avatar-gradient: linear-gradient(135deg,#f0c4dd,#c6b6f5);
+    --fp-brand-tile: #4a4675;
+    --fp-tooltip-bg: #12111e;
+    --fp-tooltip-text: #eeecf9;
+    --fp-overlay: rgba(10,9,20,.6);
+  }
 }
 
 html { background: var(--color-bg-gradient); }
@@ -197,7 +335,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .sidebar, .fp-rail {
   width: 88px; flex-shrink: 0; height: 100%;
   display: flex; flex-direction: column; align-items: center; padding: 20px 0;
-  background: rgba(255,255,255,.55); backdrop-filter: blur(20px);
+  background: var(--fp-rail-bg); backdrop-filter: blur(20px);
   box-shadow: var(--shadow-nav); position: relative; z-index: 2;
   overflow: hidden; /* дочерний .fp-nav сам скроллится — эта колонка не должна расти выше экрана */
 }
@@ -206,7 +344,7 @@ textarea.input { min-height: 90px; resize: vertical; }
   display: block; color: transparent; font-size: 0;
 }
 .fp-brand::before, .fp-brand::after { content: ""; position: absolute; width: 32px; height: 32px; border-radius: 10px; }
-.fp-brand::before { top: 5px; left: 5px; background: #d8d3f7; }
+.fp-brand::before { top: 5px; left: 5px; background: var(--fp-brand-tile); }
 .fp-brand::after { top: 0; left: 0; background: var(--accent-gradient); box-shadow: 0 8px 16px -6px rgba(109,90,240,.5); }
 /* Пункты навигации сгруппированы (см. fp-nav-group в AppShell.tsx) с тонким
    разделителем между группами — легче ориентироваться, когда пунктов много.
@@ -233,9 +371,9 @@ textarea.input { min-height: 90px; resize: vertical; }
 .fp-item svg, .nav-item svg { width: 20px; height: 20px; }
 .fp-foot, .sidebar-footer { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 0 0; width: 100%; flex-shrink: 0; }
 .fp-avatar, .avatar {
-  width: 38px; height: 38px; border-radius: 13px; color: #5a4a8c;
+  width: 38px; height: 38px; border-radius: 13px; color: var(--fp-avatar-text);
   font: 600 13px var(--font-heading); display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg,#ffd6e8,#d6c9fb); box-shadow: 0 6px 14px -4px rgba(109,90,190,.4);
+  background: var(--fp-avatar-gradient); box-shadow: 0 6px 14px -4px rgba(109,90,190,.4);
   text-decoration: none;
 }
 .avatar-name { font-size: 11px; font-weight: 500; }
@@ -254,7 +392,7 @@ textarea.input { min-height: 90px; resize: vertical; }
   content: "Выйти";
   position: absolute; left: 100%; top: 50%; transform: translate(8px, -50%);
   white-space: nowrap; font: 600 12px var(--font-body); letter-spacing: 0.01em;
-  background: #26243c; color: #fff; padding: 5px 10px; border-radius: 8px;
+  background: var(--fp-tooltip-bg); color: var(--fp-tooltip-text); padding: 5px 10px; border-radius: 8px;
   opacity: 0; pointer-events: none; transition: opacity .12s ease;
   box-shadow: var(--shadow-card-sm);
 }
@@ -292,7 +430,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .fp-bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   align-items: stretch; justify-content: space-around;
-  background: rgba(255,255,255,.9); backdrop-filter: blur(20px);
+  background: var(--fp-bottom-nav-bg); backdrop-filter: blur(20px);
   box-shadow: 0 -8px 20px -14px rgba(109,90,190,.35);
   border-top: 1px solid var(--row-divider);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
@@ -307,7 +445,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .fp-bottom-item:hover { text-decoration: none; }
 
 .fp-more-backdrop {
-  position: fixed; inset: 0; z-index: 45; background: rgba(38,36,60,.45);
+  position: fixed; inset: 0; z-index: 45; background: var(--fp-overlay);
 }
 .fp-more-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
@@ -388,7 +526,7 @@ tr.clickable { cursor: pointer; }
 }
 
 /* — dialog — */
-.dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: rgba(38,36,60,.45); z-index: 50; }
+.dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: var(--fp-overlay); z-index: 50; }
 .dialog { width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-hero); border: none; }
 .dialog-title { font-family: var(--font-heading); font-weight: 600; font-size: 20px; }
 .dialog-body { font-size: 14px; }
@@ -502,7 +640,7 @@ tr.clickable { cursor: pointer; }
   color: transparent; font-size: 0;
 }
 .fp-brand-mark::before, .fp-brand-mark::after { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 11px; }
-.fp-brand-mark::before { top: 6px; left: 6px; background: #d8d3f7; }
+.fp-brand-mark::before { top: 6px; left: 6px; background: var(--fp-brand-tile); }
 .fp-brand-mark::after { top: 0; left: 0; background: var(--accent-gradient); box-shadow: var(--shadow-btn); }
 .fp-brand-title { font-family: var(--font-heading); font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .fp-brand-sub { font-size: 12.5px; color: var(--color-text-secondary); }

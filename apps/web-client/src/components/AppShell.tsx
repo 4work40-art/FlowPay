@@ -9,6 +9,7 @@ import {
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { getToken, getStoredUser, clearSession, type StoredUser } from '@/lib/auth';
 import ReminderPopup from './ReminderPopup';
+import ThemeToggle from './ThemeToggle';
 
 // Пункты навигации сгруппированы по смыслу (а не одним сплошным списком) —
 // так рельс навигации легче просматривать и не путаются несвязанные разделы.
@@ -116,6 +117,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="fp-foot">
+          <ThemeToggle />
           <a
             href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
             className="fp-item" title="Поддержка" aria-label="Поддержка">
@@ -188,6 +190,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/settings" className="fp-more-item" onClick={() => setMoreOpen(false)}>
             <Settings strokeWidth={1.5} /> Настройки
           </Link>
+          <ThemeToggle className="fp-more-item" />
           <a
             href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || 'support@example.ru'}?subject=${encodeURIComponent('Счёт&Контроль — вопрос')}`}
             className="fp-more-item">

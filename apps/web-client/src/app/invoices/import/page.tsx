@@ -200,7 +200,7 @@ export default function ImportInvoicesPage() {
                           <td>
                             <input type="checkbox" checked={r.include} onChange={e => updateRow(r.row, { include: e.target.checked })} />
                           </td>
-                          <td className="mono" style={{ color: '#888' }}>{r.row}</td>
+                          <td className="mono" style={{ color: 'var(--color-text-secondary)' }}>{r.row}</td>
                           <td><input type="text" value={r.number} onChange={e => updateRow(r.row, { number: e.target.value })} style={{ width: 90 }} /></td>
                           <td>
                             <input
@@ -226,7 +226,7 @@ export default function ImportInvoicesPage() {
                         {hasWarnings && (
                           <tr style={{ background: 'var(--amber-light, #fdf3e0)' }}>
                             <td></td>
-                            <td colSpan={8} style={{ color: '#9a6b00', fontSize: 12, paddingTop: 0 }}>
+                            <td colSpan={8} style={{ color: 'var(--tag-yellow-text)', fontSize: 12, paddingTop: 0 }}>
                               ⚠ {r.warnings.join('; ')}
                             </td>
                           </tr>
