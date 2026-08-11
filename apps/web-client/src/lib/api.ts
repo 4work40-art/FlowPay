@@ -304,6 +304,7 @@ export const api = {
 
   counterparties: {
     list: () => req('/counterparties'),
+    get: (id: string) => req(`/counterparties/${id}`),
     suggest: (inn: string) => req(`/counterparties/suggest?inn=${encodeURIComponent(inn)}`),
     rating: (params: { from?: string; to?: string } = {}) =>
       req(`/counterparties/rating?${new URLSearchParams(params as Record<string, string>)}`),

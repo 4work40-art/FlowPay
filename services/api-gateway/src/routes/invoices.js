@@ -15,6 +15,7 @@ router.get('/', authMiddleware, async (req, res) => {
   const to     = req.query.to;
   const dueFrom = req.query.due_from; // YYYY-MM-DD, по due_date (для календаря оплат)
   const dueTo   = req.query.due_to;
+  const counterpartyId = req.query.counterparty_id; // для карточки контрагента — история счетов с ним
   const page   = Math.max(1, parseInt(req.query.page) || 1);
   const limit  = Math.min(100, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
@@ -27,6 +28,7 @@ router.get('/', authMiddleware, async (req, res) => {
     if (to)     { params.push(to);   where += ` AND i.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
     if (dueFrom) { params.push(dueFrom); where += ` AND i.due_date >= $${params.length}`; }
     if (dueTo)   { params.push(dueTo);   where += ` AND i.due_date <= $${params.length}`; }
+    if (counterpartyId) { params.push(counterpartyId); where += ` AND i.counterparty_id = $${params.length}`; }
 
     const { rows } = await pool.query(`
       SELECT i.*, c.name AS counterparty_name,
