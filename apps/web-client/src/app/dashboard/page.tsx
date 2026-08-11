@@ -20,6 +20,11 @@ type Invoice = {
 
 const NEEDS_ACTION = new Set(['CREATED', 'UNDER_CONTROL', 'OVERDUE', 'PARTIALLY_PAID', 'DISPUTED']);
 
+// Списание — финансово значимое, по сути необратимое решение. На бэкенде
+// (PATCH /invoices/:id/state) доступно только owner и accountant — здесь
+// просто скрываем кнопку для остальных ролей.
+const RESTRICTED_TRANSITION_ROLES = new Set(['owner', 'accountant']);
+
 function statusTagClass(status: string) {
   return `tag status-${status}`;
 }
@@ -64,9 +69,16 @@ export default function DashboardPage() {
   };
 
   const doTransition = async (invoiceId: string, transition: string) => {
+    let reason: string | undefined;
+    if (transition === 'write_off') {
+      const input = window.prompt('Укажите причину списания — это обязательно');
+      if (input === null) return; // отменено пользователем
+      if (!input.trim()) { alert('Причина обязательна для этого действия'); return; }
+      reason = input.trim();
+    }
     setActing(invoiceId);
     try {
-      await api.invoices.transition(invoiceId, transition);
+      await api.invoices.transition(invoiceId, transition, reason);
       load();
     } catch (e: any) {
       alert('Ошибка: ' + e.message);
@@ -212,7 +224,7 @@ export default function DashboardPage() {
                         <button className="btn btn-primary btn-sm" disabled={acting === inv.id}
                           onClick={() => doTransition(inv.id, 'set_pending')}>Ожидает оплаты</button>
                       )}
-                      {inv.status === 'OVERDUE' && (
+                      {inv.status === 'OVERDUE' && RESTRICTED_TRANSITION_ROLES.has(user?.role ?? '') && (
                         <button className="btn btn-secondary btn-sm" disabled={acting === inv.id}
                           onClick={() => doTransition(inv.id, 'write_off')}>Списать</button>
                       )}
