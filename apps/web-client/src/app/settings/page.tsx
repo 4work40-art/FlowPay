@@ -365,7 +365,7 @@ export default function SettingsPage() {
       <div className="card blueprint">
         <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
         <div className="card-header">Команда · {team.length} чел.</div>
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table className="table">
             <thead>
               <tr>
@@ -379,11 +379,11 @@ export default function SettingsPage() {
             <tbody>
               {team.map(u => (
                 <tr key={u.id}>
-                  <td style={{ fontWeight: 500 }}>{u.name}</td>
-                  <td className="text-muted">{u.email}</td>
-                  <td>{ROLE_LABEL[u.role] ?? u.role}</td>
-                  <td className="text-muted" style={{ fontSize: 12 }}>{u.last_login_at ? new Date(u.last_login_at).toLocaleString('ru-RU') : '—'}</td>
-                  <td>
+                  <td data-label="Имя" style={{ fontWeight: 500 }}>{u.name}</td>
+                  <td data-label="Email" className="text-muted">{u.email}</td>
+                  <td data-label="Роль">{ROLE_LABEL[u.role] ?? u.role}</td>
+                  <td data-label="Последний вход" className="text-muted" style={{ fontSize: 12 }}>{u.last_login_at ? new Date(u.last_login_at).toLocaleString('ru-RU') : '—'}</td>
+                  <td data-label="Статус">
                     <span className={`tag ${u.is_active ? 'tag-outline' : 'tag-neutral'}`}>
                       {u.is_active ? 'Активен' : 'Отключён'}
                     </span>
@@ -410,22 +410,24 @@ export default function SettingsPage() {
             </form>
 
             {invites.filter(i => !i.used_at).length > 0 && (
-              <table className="table" style={{ width: '100%', fontSize: 13 }}>
-                <tbody>
-                  {invites.filter(i => !i.used_at).map(inv => (
-                    <tr key={inv.id}>
-                      <td style={{ padding: '4px 0' }}>{inv.email}</td>
-                      <td className="text-muted">{ROLE_LABEL[inv.role] ?? inv.role}</td>
-                      <td className="text-muted" style={{ fontSize: 12 }}>
-                        до {new Date(inv.expires_at).toLocaleDateString('ru-RU')}
-                      </td>
-                      <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => revokeInvite(inv.id)}>Отозвать</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-wrap responsive-table">
+                <table className="table" style={{ width: '100%', fontSize: 13 }}>
+                  <tbody>
+                    {invites.filter(i => !i.used_at).map(inv => (
+                      <tr key={inv.id}>
+                        <td data-label="Email" style={{ padding: '4px 0' }}>{inv.email}</td>
+                        <td data-label="Роль" className="text-muted">{ROLE_LABEL[inv.role] ?? inv.role}</td>
+                        <td data-label="Действует до" className="text-muted" style={{ fontSize: 12 }}>
+                          до {new Date(inv.expires_at).toLocaleDateString('ru-RU')}
+                        </td>
+                        <td>
+                          <button className="btn btn-secondary btn-sm" onClick={() => revokeInvite(inv.id)}>Отозвать</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
