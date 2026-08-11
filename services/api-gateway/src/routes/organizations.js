@@ -10,6 +10,7 @@ const { audit } = require('../lib/audit');
 const mailer = require('../lib/mailer');
 const { UPLOAD_DIR } = require('../lib/storage');
 const { validateRequisites } = require('../lib/inn');
+const { isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
 
 const LOGO_ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
 const logoUpload = multer({
@@ -54,12 +55,12 @@ router.patch('/me', authMiddleware, async (req, res) => {
     return err(res, 400, 'Название не может быть пустым', 'VALIDATION_ERROR');
   const reqError = validateRequisites({ inn, kpp });
   if (reqError) return err(res, 400, reqError, 'VALIDATION_ERROR');
-  if (bank_bik !== undefined && bank_bik && !/^\d{9}$/.test(bank_bik))
-    return err(res, 400, 'БИК должен состоять из 9 цифр', 'VALIDATION_ERROR');
-  if (bank_account !== undefined && bank_account && !/^\d{20}$/.test(bank_account))
-    return err(res, 400, 'Расчётный счёт должен состоять из 20 цифр', 'VALIDATION_ERROR');
-  if (bank_corr_account !== undefined && bank_corr_account && !/^\d{20}$/.test(bank_corr_account))
-    return err(res, 400, 'Корреспондентский счёт должен состоять из 20 цифр', 'VALIDATION_ERROR');
+  if (bank_bik !== undefined && bank_bik && !isValidBik(String(bank_bik).trim()))
+    return err(res, 400, 'БИК некорректен: ожидается 9 цифр, начинается с 04', 'VALIDATION_ERROR');
+  if (bank_account !== undefined && bank_account && !isValidAccountNumber(String(bank_account).trim()))
+    return err(res, 400, 'Номер расчётного счёта некорректен: ожидается 20 цифр', 'VALIDATION_ERROR');
+  if (bank_corr_account !== undefined && bank_corr_account && !isValidAccountNumber(String(bank_corr_account).trim()))
+    return err(res, 400, 'Номер корреспондентского счёта некорректен: ожидается 20 цифр', 'VALIDATION_ERROR');
 
   try {
     const existing = await pool.query('SELECT * FROM organizations WHERE id = $1', [req.user.org_id]);
