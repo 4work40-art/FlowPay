@@ -176,7 +176,7 @@ export default function ImportInvoicesPage() {
           )}
 
           <div className="card">
-            <div className="table-wrap">
+            <div className="table-wrap responsive-table">
               <table>
                 <thead>
                   <tr>
@@ -200,9 +200,9 @@ export default function ImportInvoicesPage() {
                           <td>
                             <input type="checkbox" checked={r.include} onChange={e => updateRow(r.row, { include: e.target.checked })} />
                           </td>
-                          <td className="mono" style={{ color: '#888' }}>{r.row}</td>
-                          <td><input type="text" value={r.number} onChange={e => updateRow(r.row, { number: e.target.value })} style={{ width: 90 }} /></td>
-                          <td>
+                          <td data-label="№ стр." className="mono" style={{ color: '#888' }}>{r.row}</td>
+                          <td data-label="Номер счёта"><input type="text" value={r.number} onChange={e => updateRow(r.row, { number: e.target.value })} style={{ width: 90 }} /></td>
+                          <td data-label="Дата счёта">
                             <input
                               type="date" value={r.invoice_date}
                               onChange={e => updateRow(r.row, {
@@ -211,17 +211,17 @@ export default function ImportInvoicesPage() {
                               })}
                             />
                           </td>
-                          <td>
+                          <td data-label="Срок оплаты">
                             <input
                               type="date" required value={r.due_date}
                               style={r.dueDateAuto ? { borderColor: 'var(--amber-dark, #a06a00)' } : undefined}
                               onChange={e => updateRow(r.row, { due_date: e.target.value, dueDateAuto: false, warnings: r.warnings.filter(w => !w.startsWith('Срок оплаты не найден')) })}
                             />
                           </td>
-                          <td><input type="text" inputMode="decimal" value={r.amountRub} onChange={e => updateRow(r.row, { amountRub: e.target.value })} style={{ width: 100 }} /></td>
-                          <td><input type="text" value={r.counterparty_name} onChange={e => updateRow(r.row, { counterparty_name: e.target.value })} style={{ width: 150 }} /></td>
-                          <td><input type="text" value={r.counterparty_inn} onChange={e => updateRow(r.row, { counterparty_inn: e.target.value })} style={{ width: 100 }} /></td>
-                          <td><input type="text" value={r.notes} onChange={e => updateRow(r.row, { notes: e.target.value })} style={{ width: 140 }} /></td>
+                          <td data-label="Сумма, ₽"><input type="text" inputMode="decimal" value={r.amountRub} onChange={e => updateRow(r.row, { amountRub: e.target.value })} style={{ width: 100 }} /></td>
+                          <td data-label="Контрагент"><input type="text" value={r.counterparty_name} onChange={e => updateRow(r.row, { counterparty_name: e.target.value })} style={{ width: 150 }} /></td>
+                          <td data-label="ИНН"><input type="text" value={r.counterparty_inn} onChange={e => updateRow(r.row, { counterparty_inn: e.target.value })} style={{ width: 100 }} /></td>
+                          <td data-label="Примечание"><input type="text" value={r.notes} onChange={e => updateRow(r.row, { notes: e.target.value })} style={{ width: 140 }} /></td>
                         </tr>
                         {hasWarnings && (
                           <tr style={{ background: 'var(--amber-light, #fdf3e0)' }}>

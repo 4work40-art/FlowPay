@@ -135,7 +135,7 @@ export default function AdminRevenuePage() {
             </div>
           </div>
           <div className="card">
-            <div className="table-wrap">
+            <div className="table-wrap responsive-table">
               <table>
                 <thead>
                   <tr><th>Дата</th><th>Организация</th><th>Тариф</th><th>Сумма</th><th>Источник</th><th>Примечание</th></tr>
@@ -143,12 +143,12 @@ export default function AdminRevenuePage() {
                 <tbody>
                   {items.map(r => (
                     <tr key={r.id}>
-                      <td style={{ color: 'var(--text2)', fontSize: 12 }}>{new Date(r.occurred_at).toLocaleDateString('ru-RU')}</td>
-                      <td style={{ fontWeight: 500 }}>{r.org_name}</td>
-                      <td>{r.plan ? (PLAN_LABEL[r.plan] ?? r.plan) : '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{r.amount_display}</td>
-                      <td>{r.source === 'yookassa' ? 'ЮKassa (авто)' : 'Вручную'}</td>
-                      <td style={{ color: 'var(--text2)' }}>{r.note ?? '—'}</td>
+                      <td data-label="Дата" style={{ color: 'var(--text2)', fontSize: 12 }}>{new Date(r.occurred_at).toLocaleDateString('ru-RU')}</td>
+                      <td data-label="Организация" style={{ fontWeight: 500 }}>{r.org_name}</td>
+                      <td data-label="Тариф">{r.plan ? (PLAN_LABEL[r.plan] ?? r.plan) : '—'}</td>
+                      <td data-label="Сумма" style={{ fontWeight: 600 }}>{r.amount_display}</td>
+                      <td data-label="Источник">{r.source === 'yookassa' ? 'ЮKassa (авто)' : 'Вручную'}</td>
+                      <td data-label="Примечание" style={{ color: 'var(--text2)' }}>{r.note ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

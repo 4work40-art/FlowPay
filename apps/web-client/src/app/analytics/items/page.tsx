@@ -71,7 +71,7 @@ export default function ItemsAnalyticsPage() {
         <div className="error-box"><strong>Ошибка:</strong> {error}</div>
       ) : (
         <div className="card">
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table>
               <thead>
                 <tr>
@@ -87,12 +87,12 @@ export default function ItemsAnalyticsPage() {
                 {items.map(it => (
                   <tr key={it.name} onClick={() => setSelected(it.name)}
                     style={{ cursor: 'pointer', background: selected === it.name ? 'var(--card-bg2, #f7f5ef)' : undefined }}>
-                    <td>{it.name}</td>
-                    <td>{formatQty(it.total_quantity)}</td>
-                    <td>{it.total_display}</td>
-                    <td>{it.avg_price_display ?? '—'}</td>
-                    <td>{it.active_months}</td>
-                    <td>{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
+                    <td data-label="Наименование">{it.name}</td>
+                    <td data-label="Куплено, шт.">{formatQty(it.total_quantity)}</td>
+                    <td data-label="Сумма закупок">{it.total_display}</td>
+                    <td data-label="Средняя цена/шт.">{it.avg_price_display ?? '—'}</td>
+                    <td data-label="Активных месяцев">{it.active_months}</td>
+                    <td data-label="Последняя закупка">{it.last_purchase_date ? new Date(it.last_purchase_date).toLocaleDateString('ru-RU') : '—'}</td>
                   </tr>
                 ))}
               </tbody>

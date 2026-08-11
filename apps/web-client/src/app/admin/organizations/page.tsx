@@ -55,7 +55,7 @@ export default function AdminOrganizationsPage() {
       </div>
 
       <div className="card">
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table">
           <table>
             <thead>
               <tr>
@@ -71,13 +71,13 @@ export default function AdminOrganizationsPage() {
             <tbody>
               {filtered.map(o => (
                 <tr key={o.id} className="clickable" onClick={() => window.location.href = `/admin/organizations/${o.id}`}>
-                  <td style={{ fontWeight: 500 }}>{o.name}</td>
-                  <td>{PLAN_LABEL[o.plan] ?? o.plan} <span style={{ color: 'var(--text2)', fontSize: 11 }}>· лимит {o.invoice_limit}</span></td>
-                  <td>{o.user_count}</td>
-                  <td>{o.invoice_count}</td>
-                  <td className="tnum" style={{ fontWeight: 600 }}>{o.debt_display}</td>
-                  <td style={{ color: 'var(--text2)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('ru-RU')}</td>
-                  <td>
+                  <td data-label="Организация" style={{ fontWeight: 500 }}>{o.name}</td>
+                  <td data-label="Тариф">{PLAN_LABEL[o.plan] ?? o.plan} <span style={{ color: 'var(--text2)', fontSize: 11 }}>· лимит {o.invoice_limit}</span></td>
+                  <td data-label="Пользователей">{o.user_count}</td>
+                  <td data-label="Счетов">{o.invoice_count}</td>
+                  <td data-label="Долг" className="tnum" style={{ fontWeight: 600 }}>{o.debt_display}</td>
+                  <td data-label="Создана" style={{ color: 'var(--text2)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('ru-RU')}</td>
+                  <td data-label="Статус">
                     {!o.is_active ? (
                       <span className="health-chip bad"><i />Отключена</span>
                     ) : Number(o.debt_kopecks) > 0 ? (

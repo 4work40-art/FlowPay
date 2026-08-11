@@ -261,7 +261,7 @@ export default function ImportInvoiceFilesPage() {
 
       {!!rows.length && !createResult && (
         <div className="card">
-          <div className="table-wrap">
+          <div className="table-wrap responsive-table">
             <table>
               <thead>
                 <tr>
@@ -283,19 +283,19 @@ export default function ImportInvoiceFilesPage() {
                       <input type="checkbox" checked={r.include} disabled={!r.ok}
                         onChange={e => updateRow(i, { include: e.target.checked })} />
                     </td>
-                    <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.filename}>{r.filename}</td>
-                    <td><input type="text" value={r.number} disabled={!r.ok} onChange={e => updateRow(i, { number: e.target.value })} style={{ width: 80 }} /></td>
-                    <td><input type="date" value={r.invoiceDate} disabled={!r.ok} onChange={e => updateRow(i, { invoiceDate: e.target.value })} /></td>
-                    <td><input type="date" value={r.dueDate} disabled={!r.ok} onChange={e => updateRow(i, { dueDate: e.target.value })} /></td>
-                    <td><input type="text" inputMode="decimal" value={r.amountRub} disabled={!r.ok} onChange={e => updateRow(i, { amountRub: e.target.value })} style={{ width: 90 }} /></td>
-                    <td>
+                    <td data-label="Файл" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.filename}>{r.filename}</td>
+                    <td data-label="Номер"><input type="text" value={r.number} disabled={!r.ok} onChange={e => updateRow(i, { number: e.target.value })} style={{ width: 80 }} /></td>
+                    <td data-label="Дата счёта"><input type="date" value={r.invoiceDate} disabled={!r.ok} onChange={e => updateRow(i, { invoiceDate: e.target.value })} /></td>
+                    <td data-label="Срок оплаты"><input type="date" value={r.dueDate} disabled={!r.ok} onChange={e => updateRow(i, { dueDate: e.target.value })} /></td>
+                    <td data-label="Сумма, ₽"><input type="text" inputMode="decimal" value={r.amountRub} disabled={!r.ok} onChange={e => updateRow(i, { amountRub: e.target.value })} style={{ width: 90 }} /></td>
+                    <td data-label="Контрагент">
                       <select value={r.counterpartyId} disabled={!r.ok} onChange={e => updateRow(i, { counterpartyId: e.target.value })} style={{ maxWidth: 160 }}>
                         <option value="">{r.counterpartyName ? `+ создать «${r.counterpartyName}»` : '— не выбран —'}</option>
                         {counterparties.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </td>
-                    <td>{r.items.length || '—'}</td>
-                    <td style={{ fontSize: 12, color: r.existingInvoiceId ? 'var(--amber-dark, #a06a00)' : (r.ok ? 'var(--text2)' : 'var(--red)') }}>
+                    <td data-label="Позиций">{r.items.length || '—'}</td>
+                    <td data-label="Статус" style={{ fontSize: 12, color: r.existingInvoiceId ? 'var(--amber-dark, #a06a00)' : (r.ok ? 'var(--text2)' : 'var(--red)') }}>
                       {r.status}
                     </td>
                   </tr>
