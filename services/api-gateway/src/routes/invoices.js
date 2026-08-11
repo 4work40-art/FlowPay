@@ -4,6 +4,7 @@ const { ok, err, dbErr, fmt } = require('../lib/http');
 const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
+const { validateInvoiceCreate, validateBulkInvoiceItem } = require('../lib/invoiceValidation');
 
 const router = express.Router();
 
@@ -121,12 +122,8 @@ async function insertItems(client, orgId, invoiceId, items) {
 
 router.post('/', authMiddleware, async (req, res) => {
   const { amount_kopecks, number, counterparty_id, due_date, invoice_date, notes, items } = req.body || {};
-  if (!amount_kopecks || amount_kopecks <= 0)
-    return err(res, 400, 'Сумма должна быть больше нуля', 'VALIDATION_ERROR');
-  if (!Number.isInteger(amount_kopecks))
-    return err(res, 400, 'Сумма должна быть целым числом (в копейках)', 'VALIDATION_ERROR');
-  if (!due_date)
-    return err(res, 400, 'Укажите срок оплаты счёта — без него счёт не попадёт в календарь оплат и не будет учтён в просрочках', 'VALIDATION_ERROR');
+  const inputError = validateInvoiceCreate(req.body);
+  if (inputError) return err(res, 400, inputError, 'VALIDATION_ERROR');
   const itemsError = validateItems(items);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
 
@@ -206,13 +203,9 @@ router.post('/bulk', authMiddleware, async (req, res) => {
         const row = item.row ?? idx + 1;
 
         const amount_kopecks = item.amount_kopecks;
-        if (!Number.isInteger(amount_kopecks) || amount_kopecks <= 0) {
-          failed.push({ row, reason: 'Сумма должна быть целым числом больше нуля (в копейках)' });
-          continue;
-        }
-
-        if (!item.due_date) {
-          failed.push({ row, reason: 'Укажите срок оплаты — без него счёт не попадёт в календарь оплат и не будет учтён в просрочках' });
+        const bulkItemError = validateBulkInvoiceItem(item);
+        if (bulkItemError) {
+          failed.push({ row, reason: bulkItemError });
           continue;
         }
 
