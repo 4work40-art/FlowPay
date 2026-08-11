@@ -3,6 +3,43 @@ import { useEffect, useState } from 'react';
 import { Building2, Plus } from 'lucide-react';
 import { api, ROLE_LABEL, PLAN_LABEL } from '@/lib/api';
 import { updateToken, clearSession } from '@/lib/auth';
+import { isValidInn } from '@/lib/inn';
+
+// Формат-проверки реквизитов организации: поля необязательны, поэтому
+// пустое значение всегда допустимо — проверяем только когда что-то введено.
+// ИНН — контрольная сумма (тот же алгоритм ФНС, что и на бэкенде и в
+// карточке контрагента, см. lib/inn.ts). Остальные — формат, зеркалит
+// services/api-gateway/src/lib/inn.js и bankRequisites.js.
+function orgInnError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (!/^\d{10}$|^\d{12}$/.test(v))
+    return 'ИНН должен состоять из 10 цифр (юрлицо) или 12 цифр (ИП)';
+  if (!isValidInn(v))
+    return 'ИНН указан некорректно — не совпадает контрольная сумма, проверьте цифры';
+  return null;
+}
+function orgKppError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (!/^\d{4}[\dA-ZА-Я]{2}\d{3}$/.test(v))
+    return 'КПП некорректен: ожидается 9 знаков в формате ФНС';
+  return null;
+}
+function bikError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (!/^04\d{7}$/.test(v))
+    return 'БИК некорректен: ожидается 9 цифр, начинается с 04';
+  return null;
+}
+function accountError(value: string, label: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (!/^\d{20}$/.test(v))
+    return `${label} некорректен: ожидается 20 цифр`;
+  return null;
+}
 
 type Me = { name: string; email: string; role: string; org_name: string; plan: string };
 type TeamMember = { id: string; name: string; email: string; role: string; is_active: boolean; last_login_at: string | null };
@@ -161,6 +198,10 @@ export default function SettingsPage() {
   const saveOrg = async (e: React.FormEvent) => {
     e.preventDefault();
     setOrgError(''); setOrgOk('');
+    const innMsg = orgInnError(orgInn);
+    if (innMsg) { setOrgError(innMsg); return; }
+    const kppMsg = orgKppError(orgKpp);
+    if (kppMsg) { setOrgError(kppMsg); return; }
     setOrgSaving(true);
     try {
       const res = await api.organization.update({ name: orgName, inn: orgInn || undefined, kpp: orgKpp || undefined });
@@ -176,6 +217,10 @@ export default function SettingsPage() {
   const saveBilling = async (e: React.FormEvent) => {
     e.preventDefault();
     setBillingError(''); setBillingOk('');
+    const bikMsg = bikError(bankBik);
+    if (bikMsg) { setBillingError(bikMsg); return; }
+    const accountMsg = accountError(bankAccount, 'Расчётный счёт') || accountError(bankCorrAccount, 'Корреспондентский счёт');
+    if (accountMsg) { setBillingError(accountMsg); return; }
     setBillingSaving(true);
     try {
       const res = await api.organization.update({
@@ -249,11 +294,13 @@ export default function SettingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">ИНН</label>
-                  <input className="input" type="text" value={orgInn} onChange={e => setOrgInn(e.target.value)} placeholder="10 или 12 цифр" />
+                  <input className="input" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={12}
+                    value={orgInn} onChange={e => setOrgInn(e.target.value.replace(/\D/g, ''))} placeholder="10 или 12 цифр" />
                 </div>
                 <div className="form-group">
                   <label className="field-label">КПП</label>
-                  <input className="input" type="text" value={orgKpp} onChange={e => setOrgKpp(e.target.value)} placeholder="9 цифр" />
+                  <input className="input" type="text" inputMode="numeric" maxLength={9}
+                    value={orgKpp} onChange={e => setOrgKpp(e.target.value)} placeholder="9 цифр" />
                 </div>
                 <div style={{ marginBottom: 10 }}>
                   <div className="field-label">Тариф</div>
@@ -329,7 +376,8 @@ export default function SettingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">Расчётный счёт</label>
-                  <input className="input" type="text" value={bankAccount} onChange={e => setBankAccount(e.target.value)} placeholder="20 цифр" />
+                  <input className="input" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={20}
+                    value={bankAccount} onChange={e => setBankAccount(e.target.value.replace(/\D/g, ''))} placeholder="20 цифр" />
                 </div>
                 <div className="form-group">
                   <label className="field-label">Наименование банка</label>
@@ -337,11 +385,13 @@ export default function SettingsPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">БИК</label>
-                  <input className="input" type="text" value={bankBik} onChange={e => setBankBik(e.target.value)} placeholder="9 цифр" />
+                  <input className="input" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={9}
+                    value={bankBik} onChange={e => setBankBik(e.target.value.replace(/\D/g, ''))} placeholder="9 цифр" />
                 </div>
                 <div className="form-group">
                   <label className="field-label">Корр. счёт</label>
-                  <input className="input" type="text" value={bankCorrAccount} onChange={e => setBankCorrAccount(e.target.value)} placeholder="20 цифр" />
+                  <input className="input" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={20}
+                    value={bankCorrAccount} onChange={e => setBankCorrAccount(e.target.value.replace(/\D/g, ''))} placeholder="20 цифр" />
                 </div>
                 <div className="form-group">
                   <label className="field-label">Руководитель</label>
