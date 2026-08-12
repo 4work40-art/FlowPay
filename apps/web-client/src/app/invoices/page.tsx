@@ -84,16 +84,19 @@ export default function InvoicesPage() {
     <div>
       <div className="page-header">
         <div className="page-title">Счета</div>
-        <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowExport(v => !v)}>
-            <Download size={14} strokeWidth={1.5} /> Экспорт CSV
-          </button>
-          <a href="/invoices/import" className="btn btn-secondary btn-sm">
-            <BarChart3 size={14} strokeWidth={1.5} /> Импорт реестра
-          </a>
-          <a href="/invoices/import-files" className="btn btn-secondary btn-sm">
-            <FolderUp size={14} strokeWidth={1.5} /> Массовая загрузка
-          </a>
+        <div style={{ display: 'flex', gap: 8, position: 'relative', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowExport(v => !v)}>
+              <Download size={14} strokeWidth={1.5} /> Экспорт CSV
+            </button>
+            <a href="/invoices/import" className="btn btn-secondary btn-sm">
+              <BarChart3 size={14} strokeWidth={1.5} /> Импорт реестра
+            </a>
+            <a href="/invoices/import-files" className="btn btn-secondary btn-sm">
+              <FolderUp size={14} strokeWidth={1.5} /> Массовая загрузка
+            </a>
+          </div>
+          <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--color-divider)', margin: '0 4px' }} />
           <a href="/invoices/new" className="btn btn-primary blueprint">
             <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
             <Plus size={14} strokeWidth={1.5} /> Загрузить счёт

@@ -41,10 +41,10 @@ export default function ReminderPopup() {
 
   return (
     <div className="card" style={{
-      marginBottom: 16, borderColor: 'var(--amber-dark, #a06a00)',
-      background: 'var(--amber-light, #fdf1de)',
+      marginBottom: 16, borderColor: 'var(--tag-yellow-text)',
+      background: 'var(--tag-yellow-bg)',
     }}>
-      <div className="card-header" style={{ color: 'var(--amber-dark, #a06a00)' }}>
+      <div className="card-header" style={{ color: 'var(--tag-yellow-text)' }}>
         <span>🔔 Напоминание об оплате — {items.length} {items.length === 1 ? 'счёт' : 'счетов'}</span>
         <button className="btn btn-sm" onClick={dismiss}>Закрыть</button>
       </div>
