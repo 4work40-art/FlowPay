@@ -25,7 +25,7 @@ const TRANSITIONS: Record<string, { label: string; from: string[]; cls: string }
   mark_overdue:     { label: 'Отметить просрочку', from: ['PAYMENT_PENDING', 'UNDER_CONTROL'],          cls: 'btn-secondary'   },
   open_dispute:     { label: 'Открыть спор',       from: ['PAYMENT_PENDING', 'OVERDUE', 'PARTIALLY_PAID'], cls: 'btn-secondary'   },
   resolve_dispute:  { label: 'Закрыть спор',       from: ['DISPUTED'],                                  cls: 'btn-primary' },
-  write_off:        { label: 'Списать',            from: ['OVERDUE'],                                   cls: 'btn-secondary'   },
+  write_off:        { label: 'Списать',            from: ['OVERDUE'],                                   cls: 'btn-danger'      },
   archive:          { label: 'В архив',           from: ['PAID'],                                      cls: 'btn-secondary'    },
 };
 
@@ -258,7 +258,13 @@ export default function InvoiceDetailPage() {
         {inv.notes && <div className="card-body text-muted">{inv.notes}</div>}
         <div className="card-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {available.map(([key, t]) => (
-            <button key={key} className={`btn btn-sm ${t.cls}`} disabled={acting} onClick={() => doTransition(key)}>
+            <button
+              key={key}
+              className={`btn btn-sm ${t.cls}`}
+              style={t.cls === 'btn-danger' ? { marginLeft: 12 } : undefined}
+              disabled={acting}
+              onClick={() => doTransition(key)}
+            >
               {t.label}
             </button>
           ))}

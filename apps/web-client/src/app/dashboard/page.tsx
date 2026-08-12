@@ -224,13 +224,13 @@ export default function DashboardPage() {
                         <button className="btn btn-primary btn-sm" disabled={acting === inv.id}
                           onClick={() => doTransition(inv.id, 'set_pending')}>Ожидает оплаты</button>
                       )}
-                      {inv.status === 'OVERDUE' && RESTRICTED_TRANSITION_ROLES.has(user?.role ?? '') && (
-                        <button className="btn btn-secondary btn-sm" disabled={acting === inv.id}
-                          onClick={() => doTransition(inv.id, 'write_off')}>Списать</button>
-                      )}
                       <a href={`/invoices/${inv.id}`} className="btn btn-ghost btn-sm">
                         Подробнее <ArrowRight size={13} strokeWidth={1.5} />
                       </a>
+                      {inv.status === 'OVERDUE' && RESTRICTED_TRANSITION_ROLES.has(user?.role ?? '') && (
+                        <button className="btn btn-danger btn-sm" style={{ marginLeft: 12 }} disabled={acting === inv.id}
+                          onClick={() => doTransition(inv.id, 'write_off')}>Списать</button>
+                      )}
                     </div>
                   </td>
                 </tr>

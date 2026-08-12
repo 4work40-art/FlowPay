@@ -274,6 +274,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--color-accen
 .btn-ghost { color: var(--color-accent); padding-inline: var(--space-2); background: transparent; }
 .btn-ghost:hover { background: var(--color-surface-muted); }
 .btn-ghost:active { background: var(--color-surface-muted-alt); }
+.btn-danger { background: transparent; color: var(--tag-pink-text); border: 1px solid var(--tag-pink-text); }
+.btn-danger:hover { background: var(--tag-pink-bg); }
+.btn-danger:active { background: var(--tag-pink-bg); }
 .btn-icon { width: 40px; height: 40px; padding: 0; border-radius: var(--radius-sm); }
 .btn-block { width: 100%; margin-top: var(--space-2); }
 .btn-sm { padding: 7px 14px; font-size: 12px; }
