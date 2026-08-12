@@ -36,7 +36,7 @@ export default function PublicPricingPage() {
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-          {plans && Object.entries(plans).map(([key, p]) => (
+          {plans && Object.entries(plans).filter(([, p]) => p.price_kopecks !== null).map(([key, p]) => (
             <div key={key} className="card" style={{ padding: 20 }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>{p.label}</div>
               <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{priceLabel(p)}</div>
@@ -49,6 +49,37 @@ export default function PublicPricingPage() {
             </div>
           ))}
         </div>
+
+        {plans && Object.entries(plans).filter(([, p]) => p.price_kopecks === null).map(([key, p]) => (
+          <div
+            key={key}
+            className="card"
+            style={{
+              marginTop: 16,
+              padding: 20,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{p.label}</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                {priceLabel(p)} · {p.invoice_limit === null ? 'Без ограничений по счетам' : `До ${p.invoice_limit} счетов`} — нужен корпоративный тариф? Свяжитесь с нами.
+              </div>
+            </div>
+            <Link href="/register" className="btn btn-sm" style={{ whiteSpace: 'nowrap' }}>
+              Обсудить условия
+            </Link>
+          </div>
+        ))}
+
+        <p style={{ textAlign: 'center', marginTop: 32, fontSize: 14 }}>
+          Как устроена изоляция данных между организациями →{' '}
+          <Link href="/trust" style={{ fontWeight: 600 }}>Безопасность и защита данных</Link>
+        </p>
       </main>
     </div>
   );

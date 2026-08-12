@@ -226,7 +226,20 @@ export default function CounterpartiesPage() {
               </thead>
               <tbody>
                 {filtered.map(c => (
-                  <tr key={c.id} onClick={() => router.push(`/counterparties/${c.id}`)} style={{ cursor: 'pointer' }}>
+                  <tr
+                    key={c.id}
+                    onClick={() => router.push(`/counterparties/${c.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        router.push(`/counterparties/${c.id}`);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Открыть карточку контрагента ${c.name}`}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <td style={{ width: 24, color: 'var(--color-text-secondary)' }}>
                       <ChevronRight size={14} strokeWidth={1.5} />
                     </td>
