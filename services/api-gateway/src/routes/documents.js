@@ -9,6 +9,7 @@ const { authMiddleware } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { UPLOAD_DIR } = require('../lib/storage');
 const { recognize } = require('../lib/documentRecognizer');
+const { sniffFile, MIME_KIND } = require('../lib/fileType');
 const { purposeContainsNumber } = require('../lib/statementParse');
 const { parseCsvRegister, parseExcelRegister, MAX_ROWS } = require('../lib/registerParse');
 const { rateLimit } = require('../lib/rateLimit');
@@ -292,6 +293,15 @@ router.post('/invoices/:invoiceId/documents', authMiddleware, (req, res) => {
       return err(res, 400, message, 'VALIDATION_ERROR');
     }
     if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+
+    // Сверяем РЕАЛЬНОЕ содержимое (magic bytes) с заявленным типом: fileFilter
+    // выше проверяет только клиентский mimetype, который подделывается. Файл
+    // сохраняется на диск и потом отдаётся на скачивание, поэтому под видом
+    // PDF/картинки нельзя класть произвольные байты.
+    if (sniffFile(req.file.path) !== MIME_KIND[req.file.mimetype]) {
+      fs.unlink(req.file.path, () => {});
+      return err(res, 400, 'Содержимое файла не соответствует его типу — разрешены только настоящие PDF, JPG и PNG', 'VALIDATION_ERROR');
+    }
 
     try {
       const inv = await pool.query('SELECT id FROM invoices WHERE id=$1 AND org_id=$2', [req.params.invoiceId, req.user.org_id]);

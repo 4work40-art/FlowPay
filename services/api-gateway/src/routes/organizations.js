@@ -11,8 +11,14 @@ const mailer = require('../lib/mailer');
 const { UPLOAD_DIR } = require('../lib/storage');
 const { validateRequisites } = require('../lib/inn');
 const { isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
+const { sniffFile, MIME_KIND } = require('../lib/fileType');
 
-const LOGO_ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/svg+xml']);
+// SVG больше не принимается: логотип отдаётся из /me/logo и раньше рендерился
+// инлайн по Content-Type от расширения, а SVG может нести <script> — это был
+// вектор stored-XSS. Оставлены только растровые PNG/JPEG, а реальный тип
+// сверяется по сигнатуре (см. обработчик загрузки). Уже загруженные SVG
+// обезврежены заголовками на отдаче (см. GET /me/logo).
+const LOGO_ALLOWED_MIME = new Set(['image/png', 'image/jpeg']);
 const logoUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -171,11 +177,19 @@ router.post('/me/logo', authMiddleware, (req, res) => {
 
   logoUpload.single('file')(req, res, async (uploadErr) => {
     if (uploadErr) {
-      const message = uploadErr.message === 'UNSUPPORTED_TYPE' ? 'Разрешены только PNG, JPG и SVG'
+      const message = uploadErr.message === 'UNSUPPORTED_TYPE' ? 'Разрешены только PNG и JPG'
         : uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Файл больше 2 МБ' : 'Не удалось загрузить файл';
       return err(res, 400, message, 'VALIDATION_ERROR');
     }
     if (!req.file) return err(res, 400, 'Файл не передан', 'VALIDATION_ERROR');
+
+    // Сверяем реальное содержимое с заявленным типом: под видом image/png
+    // нельзя положить SVG-со-скриптом или произвольные байты (логотип потом
+    // отдаётся браузеру).
+    if (sniffFile(req.file.path) !== MIME_KIND[req.file.mimetype]) {
+      fs.unlink(req.file.path, () => {});
+      return err(res, 400, 'Содержимое файла не соответствует его типу — загрузите настоящий PNG или JPG', 'VALIDATION_ERROR');
+    }
 
     try {
       const existing = await pool.query('SELECT logo_path FROM organizations WHERE id=$1', [req.user.org_id]);
@@ -196,6 +210,12 @@ router.get('/me/logo', authMiddleware, async (req, res) => {
     if (!rows.length || !rows[0].logo_path) return err(res, 404, 'Логотип не найден', 'NOT_FOUND');
     const filePath = path.join(UPLOAD_DIR, rows[0].logo_path);
     if (!fs.existsSync(filePath)) return err(res, 404, 'Логотип не найден', 'NOT_FOUND');
+    // Защита на отдаче: nosniff запрещает браузеру угадывать тип вопреки
+    // заголовку, а CSP default-src 'none' нейтрализует скрипт в уже ранее
+    // загруженных SVG, если файл откроют как отдельный документ. Новые загрузки
+    // SVG уже не принимаются (см. LOGO_ALLOWED_MIME + сверку сигнатуры).
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
     return res.sendFile(filePath);
   } catch (e) {
     return dbErr(res, e, '[logo get]');

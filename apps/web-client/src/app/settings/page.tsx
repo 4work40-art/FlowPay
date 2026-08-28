@@ -279,7 +279,7 @@ export default function SettingsPage() {
                     : <div style={{ width: 48, height: 48, border: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={20} strokeWidth={1.5} className="text-muted" /></div>}
                   <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
                     {logoUploading ? 'Загружаем…' : 'Загрузить логотип'}
-                    <input type="file" accept="image/png,image/jpeg,image/svg+xml" style={{ display: 'none' }} disabled={logoUploading}
+                    <input type="file" accept="image/png,image/jpeg" style={{ display: 'none' }} disabled={logoUploading}
                       onChange={e => { onLogoSelected(e.target.files?.[0] ?? null); e.target.value = ''; }} />
                   </label>
                 </div>
