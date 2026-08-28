@@ -12,8 +12,16 @@ const mailer = require('../lib/mailer');
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// По IP — от подбора пароля/перебора email по всей платформе;
-// по IP+email — чтобы точечная атака на один аккаунт не ждала общего лимита IP.
+// Два лимитера логина (как в контуре платформенного админа, platformAuth.js):
+//  - по IP+email: точечная атака на один аккаунт не ждёт общего лимита IP;
+//  - по одному IP: без него смена email обнуляла бы бюджет на каждый запрос,
+//    и один адрес мог перебирать по одному паролю тысячи разных email
+//    (password spraying), ни разу не упёршись в лимит. Оба стоят на роуте.
+const loginIpLimiter = rateLimit({
+  keyFn: (req) => `login_ip:${req.ip}`,
+  max: 50, windowSeconds: 15 * 60,
+  message: 'Слишком много попыток входа с этого адреса. Попробуйте через 15 минут.',
+});
 const loginLimiter = rateLimit({
   keyFn: (req) => `login:${req.ip}:${(req.body?.email || '').toLowerCase().trim()}`,
   max: 10, windowSeconds: 15 * 60,
@@ -80,7 +88,7 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 });
 
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', loginIpLimiter, loginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
     return err(res, 400, 'Укажите email и пароль', 'VALIDATION_ERROR');

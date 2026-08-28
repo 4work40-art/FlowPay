@@ -135,45 +135,67 @@ router.post('/', authMiddleware, canWriteInvoices, async (req, res) => {
   const itemsError = validateItems(items);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
 
+  const orgId = req.user.org_id;
+  const client = await pool.connect();
   try {
-    const orgId = req.user.org_id;
+    await client.query('BEGIN');
 
-    const orgRows = await pool.query('SELECT invoice_limit FROM organizations WHERE id=$1', [orgId]);
-    const limit = orgRows.rows[0]?.invoice_limit;
+    // Блокируем строку организации на всю операцию: проверка лимита тарифа,
+    // выдача номера и вставка счёта с позициями идут в одной транзакции под
+    // этой блокировкой. Раньше COUNT и INSERT были отдельными запросами без
+    // блокировки — N одновременных созданий на границе лимита проскакивали
+    // разом (обход лимита), а счётчик номера/вставка позиций не были частью
+    // одной транзакции — при сбое оставался счёт без позиций или дырка в
+    // нумерации. Теперь всё атомарно (находки аудита).
+    const orgRows = await client.query(
+      'SELECT invoice_limit FROM organizations WHERE id=$1 FOR UPDATE', [orgId]
+    );
+    if (!orgRows.rows.length) {
+      await client.query('ROLLBACK');
+      return err(res, 404, 'Организация не найдена', 'NOT_FOUND');
+    }
+    const limit = orgRows.rows[0].invoice_limit;
     if (limit != null) {
-      const cnt = await pool.query('SELECT COUNT(*) FROM invoices WHERE org_id=$1', [orgId]);
-      if (+cnt.rows[0].count >= limit)
+      const cnt = await client.query('SELECT COUNT(*) FROM invoices WHERE org_id=$1', [orgId]);
+      if (+cnt.rows[0].count >= limit) {
+        await client.query('ROLLBACK');
         return err(res, 403, `Достигнут лимит счетов на вашем тарифе (${limit}). Обновите тариф, чтобы продолжить.`, 'PLAN_LIMIT_REACHED');
+      }
     }
 
     if (counterparty_id) {
-      const cp = await pool.query('SELECT id FROM counterparties WHERE id=$1 AND org_id=$2', [counterparty_id, orgId]);
-      if (!cp.rows.length)
+      const cp = await client.query('SELECT id FROM counterparties WHERE id=$1 AND org_id=$2', [counterparty_id, orgId]);
+      if (!cp.rows.length) {
+        await client.query('ROLLBACK');
         return err(res, 400, 'Контрагент не найден в вашей организации', 'VALIDATION_ERROR');
+      }
     }
 
     let finalNumber = number || null;
     if (!finalNumber) {
-      // Атомарно берём и увеличиваем счётчик организации, чтобы два
-      // одновременных запроса без ручного номера не получили один и тот же.
-      const seqRows = await pool.query(
+      const seqRows = await client.query(
         `UPDATE organizations SET next_invoice_seq = next_invoice_seq + 1 WHERE id=$1 RETURNING next_invoice_seq - 1 AS seq`,
         [orgId]
       );
       finalNumber = String(seqRows.rows[0].seq);
     }
 
-    const { rows } = await pool.query(`
+    const { rows } = await client.query(`
       INSERT INTO invoices(org_id, counterparty_id, number, amount_kopecks, due_date, invoice_date, notes, status, created_by)
       VALUES($1,$2,$3,$4,$5,$6,$7,'CREATED',$8) RETURNING *
     `, [orgId, counterparty_id || null, finalNumber, amount_kopecks, due_date || null, invoice_date || null, notes || null, req.user.id]);
 
-    if (items?.length) await insertItems(pool, orgId, rows[0].id, items);
+    if (items?.length) await insertItems(client, orgId, rows[0].id, items);
+
+    await client.query('COMMIT');
 
     await audit(orgId, req.user.id, 'invoice.created', 'invoice', rows[0].id, null, { amount_kopecks, status: 'CREATED', items_count: items?.length || 0 });
     return ok(res, { ...rows[0], amount_display: fmt(rows[0].amount_kopecks) }, 201);
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     return dbErr(res, e, '[invoice create]');
+  } finally {
+    client.release();
   }
 });
 

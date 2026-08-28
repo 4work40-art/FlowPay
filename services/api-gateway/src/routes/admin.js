@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
 const { platformAdminAuthMiddleware } = require('../lib/platformAuth');
+const { tryRevokeAllUserSessions } = require('../lib/auth');
 const { platformAudit } = require('../lib/audit');
 const { PLANS } = require('../lib/plans');
 
@@ -190,6 +191,17 @@ router.patch('/organizations/:id', platformAdminAuthMiddleware, async (req, res)
 
     await platformAudit(req.params.id, req.user, 'admin.organization_updated', 'organization', req.params.id,
       before.rows[0], { ...rows[0], reason });
+
+    // Деактивация организации: отзываем активные сессии её пользователей, иначе
+    // выданные ранее токены продолжали бы работать до истечения (24ч) уже
+    // после блокировки организации — единственный реальный вектор устаревшей
+    // авторизации в этом продукте (роль после инвайта не меняется, вход
+    // деактивированного пользователя и так закрыт). Best-effort: неудача
+    // отзыва не откатывает саму деактивацию, но логируется.
+    if (is_active === false && before.rows[0].is_active !== false) {
+      const users = await pool.query('SELECT id FROM users WHERE org_id=$1', [req.params.id]);
+      for (const row of users.rows) await tryRevokeAllUserSessions(row.id);
+    }
 
     return ok(res, rows[0]);
   } catch (e) {

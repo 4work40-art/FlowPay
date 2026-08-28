@@ -14,9 +14,16 @@ function priceLabel(p: Plan) {
 
 export default function PublicPricingPage() {
   const [plans, setPlans] = useState<Plans | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.billing.plans().then(r => setPlans(r.data.plans)).catch(() => {});
+    let alive = true;
+    api.billing.plans()
+      .then(r => { if (alive) setPlans(r.data.plans); })
+      .catch((e: any) => { if (alive) setError(e?.message || 'Не удалось загрузить тарифы'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, []);
 
   return (
@@ -34,6 +41,16 @@ export default function PublicPricingPage() {
         <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)', marginBottom: 32 }}>
           Без скрытых доплат — то, что видите здесь, то и оплачиваете. Помесячно, без обязательного годового контракта.
         </p>
+
+        {loading && (
+          <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)' }}>Загрузка тарифов…</p>
+        )}
+        {error && !loading && (
+          <div className="card" style={{ padding: 20, textAlign: 'center' }}>
+            <div style={{ marginBottom: 12 }}>Не удалось загрузить тарифы. Попробуйте обновить страницу.</div>
+            <Link href="/register" className="btn btn-sm">Зарегистрироваться бесплатно</Link>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           {plans && Object.entries(plans).filter(([, p]) => p.price_kopecks !== null).map(([key, p]) => (

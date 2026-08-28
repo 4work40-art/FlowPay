@@ -179,9 +179,22 @@ router.delete('/:id', authMiddleware, canWritePayments, requireRevocationCheck, 
       return err(res, 400, `Счёт в статусе ${inv.status} — платежи по нему изменить нельзя`, 'INVOICE_STATE_INVALID');
     }
 
-    await client.query('DELETE FROM payments WHERE id=$1', [payment.id]);
+    // Удаляем под уже взятой блокировкой счёта и полагаемся на факт удаления
+    // (RETURNING + rowCount), а не на прочитанную ранее строку платежа: два
+    // параллельных DELETE одного платежа сериализуются на блокировке счёта, и
+    // второй увидит 0 удалённых строк и откатится. Раньше строка платежа
+    // читалась без блокировки, а rowCount не проверялся — и сумма платежа
+    // вычиталась из paid_kopecks дважды (находка аудита).
+    const del = await client.query(
+      'DELETE FROM payments WHERE id=$1 AND org_id=$2 RETURNING amount_kopecks',
+      [payment.id, req.user.org_id]
+    );
+    if (del.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return err(res, 404, 'Платёж уже удалён', 'NOT_FOUND');
+    }
 
-    const amountKopecks = Number(payment.amount_kopecks);
+    const amountKopecks = Number(del.rows[0].amount_kopecks);
     const amountTotal   = Number(inv.amount_kopecks);
     const newPaid = Math.max(0, Number(inv.paid_kopecks) - amountKopecks);
     // Статус счёта без этого платежа: если что-то ещё оплачено — частичная

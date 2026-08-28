@@ -68,7 +68,11 @@ async function authMiddleware(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
+    // Явно фиксируем алгоритм: секрет симметричный (HS256), и без пина
+    // algorithms введение в будущем асимметричного ключа могло бы открыть
+    // алгоритм-конфьюжн (RS256→HS256). alg:none jsonwebtoken и так отвергает
+    // при переданном секрете — это defense-in-depth.
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
   } catch (e) {
     return err(res, 401, 'Токен недействителен или истёк', 'UNAUTHORIZED');
   }

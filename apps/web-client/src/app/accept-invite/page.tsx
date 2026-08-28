@@ -68,7 +68,7 @@ function AcceptInviteForm() {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 16, cursor: 'pointer' }}>
               <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
               <span>
-                Я согласен(на) с <Link href="/privacy" target="_blank">политикой конфиденциальности</Link> и даю
+                Я согласен(на) с <Link href="/privacy" target="_blank" rel="noopener noreferrer">политикой конфиденциальности</Link> и даю
                 согласие на обработку персональных данных в соответствии с 152-ФЗ
               </span>
             </label>

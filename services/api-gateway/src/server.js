@@ -9,6 +9,20 @@ const { startDueSoonDigestJob } = require('./lib/dueSoonDigestJob');
 const app  = express();
 const port = process.env.PORT || 3001;
 
+// req.ip (ключ всех rate-limit'ов) по умолчанию — адрес прямого TCP-пира.
+// Пока сервис отвечает напрямую, это верный клиентский IP, и доверять
+// X-Forwarded-For НЕЛЬЗЯ (иначе его можно подделать и обнулять лимиты).
+// Когда сервис ставят за reverse-proxy (TLS-терминатор), нужно, наоборот,
+// доверять ровно известному числу прокси-хопов, чтобы req.ip снова стал
+// реальным клиентским. Управляется явно через TRUST_PROXY, по умолчанию
+// выключено (текущее безопасное поведение). Значение: число хопов (напр. 1)
+// или подсеть; 'true'/'false' — вкл/выкл.
+if (process.env.TRUST_PROXY) {
+  const tp = process.env.TRUST_PROXY;
+  const num = Number(tp);
+  app.set('trust proxy', tp === 'true' ? 1 : tp === 'false' ? false : (Number.isInteger(num) ? num : tp));
+}
+
 // Без CORS_ORIGIN не откатываемся в '*': по умолчанию — локальный фронтенд.
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json());

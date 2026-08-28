@@ -148,16 +148,36 @@ router.post('/webhook', async (req, res) => {
     if (tx.status === 'succeeded') return res.status(200).json({ ok: true }); // уже обработан — идемпотентность
 
     if (payment.status === 'succeeded') {
+      const planInfo = PLANS[tx.plan];
+      // Сверяем фактически оплаченную сумму с ценой тарифа. Цену выставляет
+      // сервер при checkout, поэтому в норме они совпадают — это защита в
+      // глубину: апгрейд применяется, только если оплачено не меньше цены
+      // тарифа, иначе транзакция помечается на разбор и апгрейд не выдаётся.
+      const paidKopecks = Math.round(Number(payment.amount?.value) * 100);
+      if (!planInfo || !Number.isFinite(paidKopecks) || paidKopecks < planInfo.price_kopecks) {
+        console.error(`[billing webhook] amount mismatch tx=${txId} plan=${tx.plan} paid=${paidKopecks} expected=${planInfo?.price_kopecks}`);
+        await pool.query(`UPDATE billing_transactions SET status='amount_mismatch' WHERE id=$1`, [txId]);
+        return res.status(200).json({ ok: true });
+      }
+
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+
+        // Блокируем транзакцию и перечитываем статус под блокировкой: две
+        // повторные доставки одного вебхука сериализуются здесь, и вторая
+        // увидит уже 'succeeded' и выйдет, не выдав апгрейд повторно.
+        const locked = await client.query('SELECT status FROM billing_transactions WHERE id=$1 FOR UPDATE', [txId]);
+        if (!locked.rows.length || locked.rows[0].status === 'succeeded') {
+          await client.query('ROLLBACK');
+          return res.status(200).json({ ok: true });
+        }
 
         await client.query(
           `UPDATE billing_transactions SET status='succeeded', confirmed_at=NOW() WHERE id=$1`,
           [txId]
         );
 
-        const planInfo = PLANS[tx.plan];
         await client.query(
           `UPDATE organizations SET plan=$1, invoice_limit=$2, updated_at=NOW() WHERE id=$3`,
           [tx.plan, planInfo.invoice_limit, tx.org_id]

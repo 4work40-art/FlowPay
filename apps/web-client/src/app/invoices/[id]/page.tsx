@@ -191,10 +191,20 @@ export default function InvoiceDetailPage() {
             <>
               <button
                 className="btn btn-secondary btn-sm"
-                onClick={() => {
+                onClick={async () => {
                   const url = `${window.location.origin}/public/invoice/${id}`;
-                  navigator.clipboard?.writeText(url);
-                  alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
+                  // navigator.clipboard есть только в защищённом контексте (HTTPS/
+                  // localhost). Раньше при его отсутствии (обычный http) вызов
+                  // молча ничего не делал, но пользователю всё равно показывали
+                  // «скопировано». Копируем честно и сообщаем об успехе только
+                  // если он действительно случился, иначе показываем саму ссылку.
+                  try {
+                    if (!navigator.clipboard) throw new Error('no clipboard');
+                    await navigator.clipboard.writeText(url);
+                    alert('Ссылка на счёт скопирована — можно отправить контрагенту, регистрация не нужна');
+                  } catch {
+                    window.prompt('Скопируйте ссылку на счёт для контрагента (регистрация не нужна):', url);
+                  }
                 }}>
                 <Link2 size={14} strokeWidth={1.5} /> Поделиться
               </button>

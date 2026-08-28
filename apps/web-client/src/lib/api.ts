@@ -64,7 +64,21 @@ async function req<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
     throw new Error('Сессия истекла, войдите заново');
   }
 
-  const data = await res.json();
+  return parseBody(res);
+}
+
+// Разбирает тело ответа устойчиво к не-JSON: пустое тело (204), HTML-страница
+// ошибки от прокси/балансировщика (502/504) и прочий не-JSON раньше валили
+// весь клиент SyntaxError'ом «Unexpected token <» вместо внятного сообщения.
+// Теперь читаем текст и пытаемся распарсить; если это не JSON — формируем
+// ошибку по HTTP-статусу.
+async function parseBody<T = any>(res: Response): Promise<T> {
+  const raw = await res.text();
+  let data: any = {};
+  if (raw) {
+    try { data = JSON.parse(raw); }
+    catch { data = { error: { message: `Сервер вернул неожиданный ответ (HTTP ${res.status})` } }; }
+  }
   if (!res.ok) {
     const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
     const e = new Error(msg) as Error & { code?: string };
@@ -120,14 +134,7 @@ async function platformReq<T = any>(path: string, opts: RequestInit = {}): Promi
     throw new Error('Сессия истекла, войдите заново');
   }
 
-  const data = await res.json();
-  if (!res.ok) {
-    const msg = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-    const e = new Error(msg) as Error & { code?: string };
-    e.code = data?.error?.code;
-    throw e;
-  }
-  return data;
+  return parseBody(res);
 }
 
 // ─── FIX #5: объект api с нужными методами ───────────────

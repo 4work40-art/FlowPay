@@ -66,8 +66,8 @@ export default function RegisterPage() {
         <label className="fp-consent">
           <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
           <span>
-            Я согласен(на) с <Link href="/privacy" target="_blank">политикой конфиденциальности</Link> и{' '}
-            <Link href="/offer" target="_blank">публичной офертой</Link>, даю согласие на обработку
+            Я согласен(на) с <Link href="/privacy" target="_blank" rel="noopener noreferrer">политикой конфиденциальности</Link> и{' '}
+            <Link href="/offer" target="_blank" rel="noopener noreferrer">публичной офертой</Link>, даю согласие на обработку
             персональных данных в соответствии с 152-ФЗ
           </span>
         </label>

@@ -71,7 +71,9 @@ async function platformAdminAuthMiddleware(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(token, JWT_SECRET);
+    // Пин алгоритма (HS256) — симметрично клиентскому контуру (lib/auth.js),
+    // defense-in-depth против алгоритм-конфьюжн.
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
   } catch (e) {
     return err(res, 401, 'Токен недействителен или истёк', 'UNAUTHORIZED');
   }
