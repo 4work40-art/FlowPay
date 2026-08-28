@@ -13,8 +13,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: services/api-gateway/package-lock.json
       - name: Системные зависимости распознавания документов (poppler, tesseract)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr tesseract-ocr-rus
+      - name: Установка зависимостей
+        run: cd services/api-gateway && npm ci
       - name: Синтаксис всех JS-файлов бэкенда
         run: |
           cd services/api-gateway

@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS outgoing_invoices (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(org_id, number)
 );
-CREATE INDEX IF NOT EXISTS ON outgoing_invoices(org_id);
-CREATE INDEX IF NOT EXISTS ON outgoing_invoices(org_id, status);
+CREATE INDEX IF NOT EXISTS outgoing_invoices_org_idx ON outgoing_invoices(org_id);
+CREATE INDEX IF NOT EXISTS outgoing_invoices_org_status_idx ON outgoing_invoices(org_id, status);
 
 CREATE TABLE IF NOT EXISTS outgoing_invoice_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -53,4 +53,4 @@ CREATE TABLE IF NOT EXISTS outgoing_invoice_items (
   amount_kopecks BIGINT NOT NULL CHECK (amount_kopecks > 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS ON outgoing_invoice_items(outgoing_invoice_id);
+CREATE INDEX IF NOT EXISTS outgoing_invoice_items_oi_idx ON outgoing_invoice_items(outgoing_invoice_id);

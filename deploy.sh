@@ -73,6 +73,33 @@ docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgr
 # Идёт последней: опирается на audit_logs/subscription_events из миграций выше.
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_platform_admin_separation.sql || true
 
+# Сид администратора платформы. Пароль НЕ хранится в git (раньше лежал открытым
+# текстом в миграции) — генерируем случайный при первой установке, вставляем
+# идемпотентно (INSERT ... WHERE NOT EXISTS) и один раз показываем владельцу.
+# set -e активен, поэтому psql оборачиваем в условие, чтобы непустой результат
+# или чужой пароль не роняли деплой.
+ADMIN_COUNT=$(docker compose exec -T postgres psql -U sk_user -d schyot_kontrol -tAc "SELECT count(*) FROM platform_admins;" 2>/dev/null | tr -d '[:space:]' || echo "")
+if [ "$ADMIN_COUNT" = "0" ]; then
+  PLATFORM_ADMIN_PW=$(openssl rand -hex 12)
+  # -v pw + :'pw' — безопасная подстановка через переменную psql, а не через stdin-файл.
+  docker compose exec -T postgres psql -U sk_user -d schyot_kontrol -v pw="$PLATFORM_ADMIN_PW" \
+    -c "INSERT INTO platform_admins (email, password_hash, name) SELECT 'admin@flowpay.internal', crypt(:'pw', gen_salt('bf')), 'Владелец платформы' WHERE NOT EXISTS (SELECT 1 FROM platform_admins);" || true
+  CRED_FILE="/opt/FlowPay/platform_admin_credentials.txt"
+  cat > "$CRED_FILE" <<CREDEOF
+FlowPay — учётные данные администратора платформы (god-mode).
+Логин:  admin@flowpay.internal
+Пароль: ${PLATFORM_ADMIN_PW}
+ВНИМАНИЕ: смените пароль после первого входа. Этот файл виден только root (0600).
+CREDEOF
+  chmod 600 "$CRED_FILE"
+  echo "=== PLATFORM ADMIN CREATED ==="
+  echo "Логин:  admin@flowpay.internal"
+  echo "Пароль: ${PLATFORM_ADMIN_PW}"
+  echo "Продублировано в ${CRED_FILE} (chmod 600). Смените пароль после первого входа."
+else
+  echo "Platform admin already exists — password unchanged"
+fi
+
 chmod +x backup.sh
 CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"
 ( crontab -l 2>/dev/null | grep -vF 'FlowPay/backup.sh' ; echo "$CRON_LINE" ) | crontab -
