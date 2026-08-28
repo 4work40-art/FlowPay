@@ -88,26 +88,52 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 });
 
+// Заранее сгенерированный bcrypt-хэш «пустышки» для выравнивания времени
+// ответа логина по несуществующему email. Генерируется через pgcrypto один
+// раз и кэшируется — валиден по построению, поэтому сравнение с ним не может
+// упасть. Если генерация не удалась (сбой БД в момент первого запроса) —
+// вернём null: несуществующий email в этот раз не получит выравнивания, но
+// логин реальных пользователей это никак не затрагивает.
+let timingGuardHash = null;
+async function getTimingGuardHash() {
+  if (!timingGuardHash) {
+    try {
+      const r = await pool.query("SELECT crypt('sk-login-timing-guard', gen_salt('bf')) AS h");
+      timingGuardHash = r.rows[0].h;
+    } catch { return null; }
+  }
+  return timingGuardHash;
+}
+
 router.post('/login', loginIpLimiter, loginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password)
     return err(res, 400, 'Укажите email и пароль', 'VALIDATION_ERROR');
 
   try {
-    // Используем pgcrypto для проверки пароля — без bcrypt npm модуля
+    // Поиск по email и bcrypt-сравнение РАЗДЕЛЕНЫ, чтобы сравнение выполнялось
+    // ровно один раз независимо от существования пользователя. Раньше оно шло
+    // внутри WHERE и для несуществующего email не запускалось — ответ
+    // приходил быстрее, выдавая факт регистрации адреса по таймингу. Для
+    // несуществующего берём валидный guard-хэш той же стоимости.
     const { rows } = await pool.query(
       `SELECT u.*, o.name AS org_name, o.plan
        FROM users u
        LEFT JOIN organizations o ON u.org_id = o.id
-       WHERE u.email = $1 AND u.is_active = true
-         AND u.password_hash = crypt($2, u.password_hash)`,
-      [email.toLowerCase().trim(), password]
+       WHERE u.email = $1 AND u.is_active = true`,
+      [email.toLowerCase().trim()]
     );
-
-    if (!rows.length)
-      return err(res, 401, 'Неверный email или пароль', 'UNAUTHORIZED');
-
     const u = rows[0];
+    const hashToCheck = u ? u.password_hash : await getTimingGuardHash();
+
+    let passwordOk = false;
+    if (hashToCheck) {
+      const cmp = await pool.query('SELECT ($1 = crypt($2, $1)) AS ok', [hashToCheck, password]);
+      passwordOk = cmp.rows[0].ok === true;
+    }
+
+    if (!u || !passwordOk)
+      return err(res, 401, 'Неверный email или пароль', 'UNAUTHORIZED');
     const { token, jti } = signToken(u);
 
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [u.id]);

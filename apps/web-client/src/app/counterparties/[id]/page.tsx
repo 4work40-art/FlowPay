@@ -8,6 +8,7 @@ import {
   OUTGOING_STATUS_LABEL, OUTGOING_STATUS_DESCRIPTION,
 } from '@/lib/api';
 import { innError } from '@/lib/inn';
+import { kppError, bikError, accountError } from '@/lib/requisites';
 
 type Counterparty = {
   id: string; name: string; inn: string | null; kpp: string | null;
@@ -138,8 +139,15 @@ export default function CounterpartyDetailPage() {
     e.preventDefault();
     setFormError('');
     if (!form.name.trim()) { setFormError('Укажите название'); return; }
-    const innMsg = innError(form.inn);
-    if (innMsg) { setFormError(innMsg); return; }
+    // Тот же набор проверок формата, что и на форме организации в /settings —
+    // раньше здесь проверялись только название и ИНН, а КПП/БИК/счета уходили
+    // на сервер без клиентской валидации.
+    const reqMsg = innError(form.inn)
+      || kppError(form.kpp)
+      || bikError(form.bank_bik)
+      || accountError(form.bank_account, 'Расчётный счёт')
+      || accountError(form.bank_corr_account, 'Корреспондентский счёт');
+    if (reqMsg) { setFormError(reqMsg); return; }
     setSaving(true);
     try {
       const body: Record<string, any> = { ...form };
@@ -244,7 +252,7 @@ export default function CounterpartyDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">ИНН</label>
-                  <input className="input" inputMode="numeric" maxLength={12} value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value })} />
+                  <input className="input" inputMode="numeric" maxLength={12} value={form.inn} onChange={e => setForm({ ...form, inn: e.target.value.replace(/\D/g, '') })} />
                 </div>
                 <div className="form-group">
                   <label className="field-label">КПП</label>
@@ -268,7 +276,7 @@ export default function CounterpartyDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">Расчётный счёт</label>
-                  <input className="input" value={form.bank_account} onChange={e => setForm({ ...form, bank_account: e.target.value })} />
+                  <input className="input" value={form.bank_account} onChange={e => setForm({ ...form, bank_account: e.target.value.replace(/\D/g, '') })} />
                 </div>
                 <div className="form-group">
                   <label className="field-label">Банк</label>
@@ -276,11 +284,11 @@ export default function CounterpartyDetailPage() {
                 </div>
                 <div className="form-group">
                   <label className="field-label">БИК</label>
-                  <input className="input" value={form.bank_bik} onChange={e => setForm({ ...form, bank_bik: e.target.value })} />
+                  <input className="input" value={form.bank_bik} onChange={e => setForm({ ...form, bank_bik: e.target.value.replace(/\D/g, '') })} />
                 </div>
                 <div className="form-group">
                   <label className="field-label">Корр. счёт</label>
-                  <input className="input" value={form.bank_corr_account} onChange={e => setForm({ ...form, bank_corr_account: e.target.value })} />
+                  <input className="input" value={form.bank_corr_account} onChange={e => setForm({ ...form, bank_corr_account: e.target.value.replace(/\D/g, '') })} />
                 </div>
               </div>
               <div className="form-actions">
