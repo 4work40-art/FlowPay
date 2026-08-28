@@ -73,25 +73,50 @@ done
 # Разово чистим демо-счета/платежи/контрагентов, засеянные первым запуском (безопасно перезапускать)
 docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/cleanup_demo_data.sql || true
 
-# Миграции — идемпотентны, безопасно перезапускать
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_platform_admin.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_multi_tenancy.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_billing.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_documents.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_password_reset.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_2.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_revenue_events.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_bank_import_dedupe.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_3.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_4.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_5.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_6_reminders.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_release_7_outgoing_invoices.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_backfill_due_date.sql || true
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_edo_placeholder.sql || true
-# Отдельный контур администратора платформы (таблица platform_admins + сид).
-# Идёт последней: опирается на audit_logs/subscription_events из миграций выше.
-docker compose exec -T postgres psql -U sk_user -d schyot_kontrol < infra/postgres/migration_platform_admin_separation.sql || true
+# ── Ordered-runner миграций ─────────────────────────────────────────────
+# Раньше каждая миграция шла с "|| true" и без ON_ERROR_STOP: реальная ошибка
+# (битый SQL, нарушение констрейнта, нет места на диске) молча игнорировалась,
+# и деплой рапортовал успех на полу-мигрированной БД — set -e обходился на
+# самом рисковом шаге. Теперь применённые миграции учитываются в таблице
+# schema_migrations и повторно не гоняются, а psql идёт с ON_ERROR_STOP=1:
+# настоящая ошибка прерывает деплой. Все миграции идемпотентны, поэтому ПЕРВЫЙ
+# прогон на уже мигрированной боевой БД просто перепроверит их (no-op) и
+# запишет как применённые, ничего не сломав.
+PSQL_MIGRATE="docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U sk_user -d schyot_kontrol"
+
+$PSQL_MIGRATE -c "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"
+
+# Порядок соблюдён: platform_admin_separation — последней (опирается на
+# audit_logs/subscription_events из миграций выше).
+MIGRATIONS=(
+  migration_platform_admin.sql
+  migration_multi_tenancy.sql
+  migration_billing.sql
+  migration_documents.sql
+  migration_password_reset.sql
+  migration_release_2.sql
+  migration_revenue_events.sql
+  migration_bank_import_dedupe.sql
+  migration_release_3.sql
+  migration_release_4.sql
+  migration_release_5.sql
+  migration_release_6_reminders.sql
+  migration_release_7_outgoing_invoices.sql
+  migration_backfill_due_date.sql
+  migration_edo_placeholder.sql
+  migration_platform_admin_separation.sql
+)
+
+for m in "${MIGRATIONS[@]}"; do
+  applied=$($PSQL_MIGRATE -tAc "SELECT 1 FROM schema_migrations WHERE name = '$m'" | tr -d '[:space:]')
+  if [ "$applied" = "1" ]; then
+    echo "  = $m — уже применена, пропуск"
+    continue
+  fi
+  echo "  -> применяю $m"
+  $PSQL_MIGRATE < "infra/postgres/$m"
+  $PSQL_MIGRATE -c "INSERT INTO schema_migrations(name) VALUES ('$m') ON CONFLICT (name) DO NOTHING;"
+done
 
 # Сид администратора платформы. Пароль НЕ хранится в git (раньше лежал открытым
 # текстом в миграции) — генерируем случайный при первой установке, вставляем
