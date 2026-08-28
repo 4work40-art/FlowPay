@@ -8,9 +8,17 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRole, requireRevocationCheck } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { calcAmountKopecks, calcTotals } = require('../lib/outgoingInvoiceCalc');
+
+// Запись в выставленные счета доступна только владельцу и бухгалтеру — та же
+// карта прав PERMISSIONS (routes/users.js), что и для входящих счетов и
+// платежей. readonly и vendor_admin — только чтение. Раньше на мутирующих
+// роутах этого файла ролевой проверки не было (стоял только authMiddleware),
+// и readonly/vendor_admin мог создавать, править, отменять и удалять
+// выставленные счета — расхождение с остальными финансовыми роутами.
+const canWrite = requireRole('owner', 'accountant');
 const { amountToWordsRu } = require('../lib/numberToWordsRu');
 
 const router = express.Router();
@@ -147,7 +155,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, canWrite, async (req, res) => {
   const { number, counterparty_id, issue_date, due_date, basis, notes, vat_mode, vat_rate, items } = req.body || {};
   const itemsError = validateItems(items);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
@@ -205,7 +213,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-router.patch('/:id', authMiddleware, async (req, res) => {
+router.patch('/:id', authMiddleware, canWrite, async (req, res) => {
   const { counterparty_id, issue_date, due_date, basis, notes, vat_mode, vat_rate } = req.body || {};
   const vatError = validateVat(vat_mode, vat_rate);
   if (vatError) return err(res, 400, vatError, 'VALIDATION_ERROR');
@@ -251,7 +259,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/:id/items', authMiddleware, async (req, res) => {
+router.post('/:id/items', authMiddleware, canWrite, async (req, res) => {
   const { name, quantity, unit, unit_price_kopecks } = req.body || {};
   const itemsError = validateItems([{ name, quantity, unit, unit_price_kopecks }]);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
@@ -284,7 +292,7 @@ router.post('/:id/items', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
+router.delete('/:id/items/:itemId', authMiddleware, canWrite, async (req, res) => {
   const client = await pool.connect();
   try {
     const orgId = req.user.org_id;
@@ -323,7 +331,7 @@ router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
 // Контроль по выставленным счетам: черновик -> отправлен -> оплачен/просрочен,
 // с возможностью отмены и отзыва отмены. Явные переходы (а не свободный статус)
 // исключают несогласованные состояния.
-router.patch('/:id/status', authMiddleware, async (req, res) => {
+router.patch('/:id/status', authMiddleware, canWrite, requireRevocationCheck, async (req, res) => {
   const { transition } = req.body || {};
   const rule = STATUS_TRANSITIONS[transition];
   if (!rule) return err(res, 400, 'Неизвестный переход статуса', 'VALIDATION_ERROR');
@@ -347,7 +355,7 @@ router.patch('/:id/status', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/:id', authMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, canWrite, requireRevocationCheck, async (req, res) => {
   try {
     const orgId = req.user.org_id;
     const existing = await pool.query('SELECT status FROM outgoing_invoices WHERE id=$1 AND org_id=$2', [req.params.id, orgId]);

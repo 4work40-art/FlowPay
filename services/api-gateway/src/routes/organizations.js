@@ -5,7 +5,7 @@ const fs      = require('fs');
 const { randomUUID, createHash } = require('crypto');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRevocationCheck } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const mailer = require('../lib/mailer');
 const { UPLOAD_DIR } = require('../lib/storage');
@@ -125,7 +125,7 @@ router.patch('/me/reminder-settings', authMiddleware, async (req, res) => {
 // счета, платежи, контрагенты, документы, подписки, транзакции, инвайты;
 // пользователи удаляются явно (их FK — SET NULL). Записи журнала аудита
 // обезличиваются (org_id/user_id становятся NULL по FK).
-router.delete('/me', authMiddleware, async (req, res) => {
+router.delete('/me', authMiddleware, requireRevocationCheck, async (req, res) => {
   if (req.user.role !== 'owner')
     return err(res, 403, 'Удалить организацию может только владелец', 'FORBIDDEN');
   const { password } = req.body || {};

@@ -120,10 +120,16 @@ router.post('/login', loginLimiter, async (req, res) => {
 });
 
 router.post('/logout', authMiddleware, async (req, res) => {
+  // Честный выход: если пометку об отзыве не удалось записать в Redis, токен
+  // остаётся валидным на сервере до истечения TTL — молчать об этом нельзя,
+  // иначе пользователь считает, что вышел, а сессию можно продолжать. Отвечаем
+  // ошибкой, чтобы клиент мог повторить. (Клиент всё равно чистит локальный
+  // токен, но серверный отзыв — единственное, что реально закрывает сессию.)
   try {
     await redis.set(`revoked:${req.user.jti}`, '1', 'EX', TOKEN_TTL_S);
   } catch (e) {
-    console.warn('[logout] revoke failed:', e.message);
+    console.error('[logout] revoke FAILED:', e.message);
+    return err(res, 503, 'Не удалось завершить сессию на сервере — повторите попытку', 'LOGOUT_FAILED');
   }
   return ok(res, { message: 'Вы вышли из системы' });
 });

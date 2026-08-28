@@ -2,7 +2,7 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRevocationCheck } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { PLANS, PURCHASABLE_PLANS } = require('../lib/plans');
 const yookassa = require('../lib/yookassa');
@@ -41,7 +41,7 @@ router.get('/subscription', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/checkout', authMiddleware, async (req, res) => {
+router.post('/checkout', authMiddleware, requireRevocationCheck, async (req, res) => {
   if (req.user.role !== 'owner')
     return err(res, 403, 'Оформить подписку может только владелец организации', 'FORBIDDEN');
 
@@ -92,7 +92,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
 // технически — это немедленный даунгрейд на free, а не отказ от будущего
 // списания. Ближайший оплаченный период не возвращается (без интеграции
 // с реальным recurring-биллингом это было бы ложной гарантией).
-router.post('/cancel', authMiddleware, async (req, res) => {
+router.post('/cancel', authMiddleware, requireRevocationCheck, async (req, res) => {
   if (req.user.role !== 'owner')
     return err(res, 403, 'Изменить тариф может только владелец организации', 'FORBIDDEN');
 

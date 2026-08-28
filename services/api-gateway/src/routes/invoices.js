@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware, requireRole } = require('../lib/auth');
+const { authMiddleware, requireRole, requireRevocationCheck } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
 
@@ -321,7 +321,7 @@ const RESTRICTED_TRANSITION_ROLES = ['owner', 'accountant'];
 // причину).
 const REASON_REQUIRED_TRANSITIONS = ['write_off', 'open_dispute'];
 
-router.patch('/:id/state', authMiddleware, canWriteInvoices, async (req, res) => {
+router.patch('/:id/state', authMiddleware, canWriteInvoices, requireRevocationCheck, async (req, res) => {
   const { transition, reason } = req.body || {};
 
   if (RESTRICTED_TRANSITIONS.includes(transition) && !RESTRICTED_TRANSITION_ROLES.includes(req.user.role))

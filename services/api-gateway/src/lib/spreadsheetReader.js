@@ -33,33 +33,25 @@ async function readRowsWithExcelJs(buffer) {
   return { rows, rowNumbers };
 }
 
-// Фолбэк на устаревший бинарный формат (Excel 97-2003, OLE2/BIFF) — такие
-// файлы по-прежнему реально приходят из 1С и старых версий бухгалтерских
-// программ несмотря на расширение .xls, и ExcelJS их не читает вообще.
-// SheetJS — единственная поддерживаемая npm-библиотека, читающая оба
-// формата; используется только как fallback именно для этого случая.
-function readRowsWithSheetJs(buffer) {
-  const XLSX = require('xlsx');
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error('В файле нет листов с данными');
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
-  return { rows, rowNumbers: rows.map((_, i) => i + 1) };
-}
-
+// Устаревший бинарный формат (Excel 97-2003, OLE2/BIFF) ExcelJS не читает.
+// Раньше здесь стоял fallback на SheetJS (npm-пакет `xlsx`), но его последняя
+// опубликованная в npm версия (0.18.5) несёт две неустранённые уязвимости —
+// prototype pollution (CVE-2023-30533) и ReDoS (CVE-2024-22363), а патчи
+// распространяются только через CDN SheetJS, а не через npm/lockfile. Держать
+// уязвимую библиотеку в дереве прод-зависимостей ради разбора устаревшего
+// бинарного .xls неоправданно: современные выгрузки (1С/МойСклад/СБИС) — уже
+// .xlsx, а бинарный .xls пользователь может пересохранить как .xlsx/.csv за
+// пару кликов. Поэтому зависимость убрана, а такой файл теперь честно
+// отклоняется с понятной инструкцией вместо тихого разбора уязвимым парсером.
 async function readSheetRows(buffer) {
   try {
     return await readRowsWithExcelJs(buffer);
   } catch (excelJsError) {
-    try {
-      return readRowsWithSheetJs(buffer);
-    } catch (sheetJsError) {
-      throw new Error(
-        'Не удалось прочитать файл ни как современный (.xlsx), ни как старый (.xls) формат Excel — ' +
-        'проверьте, что файл не повреждён, либо сохраните его как .xlsx или .csv и загрузите снова.'
-      );
-    }
+    throw new Error(
+      'Не удалось прочитать файл как современный Excel (.xlsx). Если это старый бинарный ' +
+      '.xls (Excel 97-2003), откройте его в Excel/LibreOffice и сохраните как .xlsx или .csv, ' +
+      'затем загрузите снова. Если файл уже .xlsx — проверьте, что он не повреждён.'
+    );
   }
 }
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr } = require('../lib/http');
-const { authMiddleware, revokeAllUserSessions, signToken, TOKEN_TTL_S } = require('../lib/auth');
+const { authMiddleware, requireRevocationCheck, revokeAllUserSessions, signToken, TOKEN_TTL_S } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { rateLimit } = require('../lib/rateLimit');
 
@@ -43,7 +43,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
-router.patch('/me/password', authMiddleware, passwordChangeLimiter, async (req, res) => {
+router.patch('/me/password', authMiddleware, passwordChangeLimiter, requireRevocationCheck, async (req, res) => {
   const { current_password, new_password } = req.body || {};
   if (!current_password || !new_password)
     return err(res, 400, 'Укажите текущий и новый пароль', 'VALIDATION_ERROR');

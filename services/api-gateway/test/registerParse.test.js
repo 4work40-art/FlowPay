@@ -1,7 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const ExcelJS = require('exceljs');
-const XLSX = require('xlsx');
 const {
   parseCsvRegister, parseExcelRegister, parseAmountToKopecks, normalizeDate, pickHeaderRow, MAX_ROWS,
 } = require('../src/lib/registerParse');
@@ -150,37 +149,31 @@ test('parseExcelRegister: строка-заголовок документа п�
   assert.strictEqual(items[0].counterparty_name, 'ООО Тюльпан');
 });
 
-// Реальные выгрузки из 1С/старых бухгалтерских программ нередко приходят в
-// устаревшем бинарном формате (Excel 97-2003, OLE2/BIFF) несмотря на
-// расширение .xls — ExcelJS такой файл прочитать не может (понимает только
-// OOXML/.xlsx) и раньше это приводило к общей ошибке «не удалось разобрать
-// файл» без объяснения причины. Регресс-тест на фолбэк через SheetJS.
-test('parseExcelRegister: устаревший бинарный формат .xls (OLE2/BIFF) читается через фолбэк', async () => {
-  const wb = XLSX.utils.book_new();
-  const sheet = XLSX.utils.aoa_to_sheet([
-    ['Номер счёта', 'Сумма, руб.', 'Контрагент', 'ИНН'],
-    ['300', 134232, 'ООО Ромашка', '7707083893'],
-  ]);
-  XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'biff8' }); // legacy .xls (OLE2)
-  assert.strictEqual(buf.slice(0, 4).toString('hex'), 'd0cf11e0'); // сигнатура OLE2 — убеждаемся, что тест честный
-
-  const items = await parseExcelRegister(buf);
-  assert.strictEqual(items.length, 1);
-  assert.strictEqual(items[0].number, '300');
-  assert.strictEqual(items[0].amount_kopecks, 13423200);
-  assert.strictEqual(items[0].counterparty_name, 'ООО Ромашка');
-  assert.strictEqual(items[0].counterparty_inn, '7707083893');
+// Устаревший бинарный .xls (Excel 97-2003, OLE2/BIFF) ExcelJS прочитать не
+// может (понимает только OOXML/.xlsx). Раньше здесь стоял SheetJS-фолбэк
+// (npm-пакет `xlsx`), но его последняя опубликованная в npm версия 0.18.5
+// несёт неустранённые уязвимости (prototype pollution CVE-2023-30533, ReDoS
+// CVE-2024-22363), а патчи есть только на CDN вне npm — держать её в дереве
+// прод-зависимостей ради разбора устаревшего формата неоправданно (см.
+// lib/spreadsheetReader.js). Поэтому такой файл теперь честно отклоняется с
+// понятной инструкцией пересохранить его как .xlsx/.csv, а не разбирается
+// уязвимым парсером и не падает с невнятной ошибкой нижнего уровня.
+test('parseExcelRegister: устаревший бинарный .xls (OLE2/BIFF) отклоняется с понятной инструкцией', async () => {
+  // Минимальный буфер с сигнатурой OLE2 (d0cf11e0) — ExcelJS его не читает.
+  const ole2 = Buffer.from('d0cf11e0a1b11ae1' + '00'.repeat(24), 'hex');
+  assert.strictEqual(ole2.slice(0, 4).toString('hex'), 'd0cf11e0'); // тест честный: это действительно OLE2
+  await assert.rejects(
+    () => parseExcelRegister(ole2),
+    /сохраните как \.xlsx или \.csv/i,
+    'ожидалась ошибка с инструкцией пересохранить файл как .xlsx или .csv'
+  );
 });
 
-test('parseExcelRegister: произвольный текст не роняет разбор — SheetJS трактует его как таблицу из одной ячейки без данных', async () => {
-  // Ни ExcelJS (только OOXML), ни бинарный OLE2-разбор здесь неприменимы;
-  // SheetJS в фолбэке достаточно терпим и не бросает исключение на любой
-  // байтовый мусор — в этом случае просто не находит строк данных, а не
-  // выдаёт первую попавшуюся ошибку с нижнего уровня библиотеки. Итоговое
-  // сообщение пользователю «реестр пуст» формирует уже роут-обработчик.
-  const items = await parseExcelRegister(Buffer.from('это не Excel и не OLE2, просто текст'));
-  assert.deepStrictEqual(items, []);
+test('parseExcelRegister: произвольный байтовый мусор отклоняется понятной ошибкой, а не падает невнятно', async () => {
+  await assert.rejects(
+    () => parseExcelRegister(Buffer.from('это не Excel и не OLE2, просто текст')),
+    /сохраните как \.xlsx или \.csv/i
+  );
 });
 
 test('pickHeaderRow: выбирает строку с наибольшим числом распознанных колонок', () => {

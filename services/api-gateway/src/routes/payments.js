@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware, requireRole } = require('../lib/auth');
+const { authMiddleware, requireRole, requireRevocationCheck } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 
 const router = express.Router();
@@ -67,7 +67,7 @@ async function findDuplicatePayment(client, orgId, invoiceId, reference, payment
   return rows[0] || null;
 }
 
-router.post('/', authMiddleware, canWritePayments, async (req, res) => {
+router.post('/', authMiddleware, canWritePayments, requireRevocationCheck, async (req, res) => {
   const { invoice_id, amount_kopecks, method, reference, payment_date, force } = req.body || {};
   if (!invoice_id)      return err(res, 400, 'Не указан ID счёта', 'VALIDATION_ERROR');
   if (!amount_kopecks || amount_kopecks <= 0)
@@ -156,7 +156,7 @@ const NON_DELETABLE_STATUSES = ['ARCHIVED', 'WRITTEN_OFF'];
 // Удаление ошибочно занесённого платежа (например, автоматическое
 // разнесение выписки привязало не тот платёж к счёту). Пересчитываем
 // paid_kopecks и статус счёта так, как будто этого платежа никогда не было.
-router.delete('/:id', authMiddleware, canWritePayments, async (req, res) => {
+router.delete('/:id', authMiddleware, canWritePayments, requireRevocationCheck, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

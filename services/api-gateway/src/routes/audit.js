@@ -1,11 +1,18 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, dbErr } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRole } = require('../lib/auth');
 
 const router = express.Router();
 
-router.get('/logs', authMiddleware, async (req, res) => {
+// Журнал аудита читают только owner и vendor_admin — ровно те роли, которым
+// карта прав PERMISSIONS (routes/users.js) даёт 'audit:read'. Раньше роут был
+// защищён только authMiddleware, и любой аутентифицированный участник
+// организации (в т.ч. accountant и readonly) мог прочитать весь журнал: входы,
+// email'ы, до/после реквизитов организации и банка, действия по приглашениям.
+const canReadAudit = requireRole('owner', 'vendor_admin');
+
+router.get('/logs', authMiddleware, canReadAudit, async (req, res) => {
   const orgId  = req.user.org_id;
   const action = req.query.action;
   const limit  = Math.min(100, parseInt(req.query.limit) || 30);

@@ -130,6 +130,24 @@ function requireRole(...allowedRoles) {
   };
 }
 
+// Fail-closed для критичных операций. authMiddleware при недоступности Redis
+// пропускает запрос дальше с revocation_checked=false (падение Redis не должно
+// класть весь продукт — чтение и некритичные операции продолжают работать).
+// Но для необратимых финансовых и связанных с безопасностью действий (приём/
+// удаление платежа, необратимые переходы статуса счёта, биллинг, удаление
+// организации, смена пароля) выполнять действие по токену, отзыв которого мы
+// не смогли проверить, недопустимо: этот токен мог быть отозван (logout, сброс
+// пароля, удаление организации), и мы бы этого не увидели. Здесь мы честно
+// отвечаем 503, а не совершаем необратимое действие вслепую. Ставится ПОСЛЕ
+// authMiddleware (использует выставленный им req.user.revocation_checked) и
+// симметрично тому, как platformAdminAuthMiddleware отвечает 503 на
+// непроверенном отзыве в контуре платформы.
+function requireRevocationCheck(req, res, next) {
+  if (!req.user || req.user.revocation_checked !== true)
+    return err(res, 503, 'Проверка сессии временно недоступна — повторите попытку через минуту', 'REVOCATION_UNAVAILABLE');
+  return next();
+}
+
 // Отзыв всех активных сессий пользователя.
 // scope: сейчас единственный — 'password' (смена/сброс пароля, удаление
 // организации). Параметр сохранён явным, чтобы случайная опечатка в имени
@@ -159,5 +177,5 @@ async function tryRevokeAllUserSessions(userId, scope = 'password') {
 
 module.exports = {
   JWT_SECRET, TOKEN_TTL_S, PLATFORM_TOKEN_TYPE, signToken, authMiddleware,
-  requireRole, revokeAllUserSessions, tryRevokeAllUserSessions,
+  requireRole, requireRevocationCheck, revokeAllUserSessions, tryRevokeAllUserSessions,
 };
