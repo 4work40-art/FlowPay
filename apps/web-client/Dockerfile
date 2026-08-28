@@ -17,10 +17,16 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Непривилегированный пользователь: у фронтенда нет записываемого volume, а
+# `next start` пишет разве что в /app/.next/cache — каталог принадлежит app
+# после chown, поэтому запуск не под root ничего не ломает и снижает урон при RCE.
+RUN addgroup -S app && adduser -S app -G app
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/next.config.js ./
+RUN chown -R app:app /app
+USER app
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
   CMD wget -qO- http://localhost:3000 || exit 1
