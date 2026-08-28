@@ -118,8 +118,15 @@ docker compose up -d --build
 |--------|-----|
 | Приложение | http://localhost:3000 |
 | API Health | http://localhost:3001/health |
-| Adminer (просмотр БД) | http://localhost:8080 (только с самого сервера) |
-| Redis UI | http://localhost:8081 (только с самого сервера) |
+| Adminer (просмотр БД) | http://localhost:8080 (профиль `tools`, только с самого сервера) |
+| Redis UI | http://localhost:8081 (профиль `tools`, только с самого сервера) |
+
+**Adminer и Redis Commander** вынесены в профиль `tools` и обычным `docker compose up -d` **не поднимаются** — в проде админ-панели БД/кэша (с историей CVE) не должны работать постоянно. Поднять по требованию и погасить после:
+
+```bash
+docker compose --profile tools up -d adminer redis-commander
+docker compose --profile tools stop adminer redis-commander
+```
 
 **Adminer:** сервер `postgres`, пользователь `sk_user`, пароль — значение `POSTGRES_PASSWORD` из `.env`, база `schyot_kontrol`.
 

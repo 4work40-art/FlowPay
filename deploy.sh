@@ -104,7 +104,10 @@ chmod +x backup.sh
 CRON_LINE="0 3 * * * cd /opt/FlowPay && ./backup.sh >> /opt/FlowPay/backup.log 2>&1"
 ( crontab -l 2>/dev/null | grep -vF 'FlowPay/backup.sh' ; echo "$CRON_LINE" ) | crontab -
 
-ufw allow 22/tcp
+# SSH через `limit` (а не `allow`): ufw начинает придерживать источник,
+# делающий >6 попыток подключения за 30 секунд — базовая защита от брутфорса
+# по SSH, легитимные подключения не страдают.
+ufw limit 22/tcp
 ufw allow 3000/tcp
 ufw allow 3001/tcp
 ufw --force enable

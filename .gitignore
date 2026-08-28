@@ -8,3 +8,7 @@ backups/
 services/api-gateway/uploads/
 tsconfig.tsbuildinfo
 .claude/worktrees/
+# Файл с паролем администратора платформы, который deploy.sh пишет в корень
+# репозитория (/opt/FlowPay). chmod 600 его уже защищает, но и в git он попасть
+# не должен — иначе один `git add -A` утёк бы god-mode пароль в историю.
+platform_admin_credentials.txt

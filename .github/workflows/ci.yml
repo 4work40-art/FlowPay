@@ -25,6 +25,8 @@ jobs:
           for f in $(find src -name '*.js'); do node --check "$f"; done
       - name: Юнит-тесты (ИНН, разбор выписок)
         run: cd services/api-gateway && npm test
+      - name: Аудит зависимостей (high и выше — блокирует)
+        run: cd services/api-gateway && npm audit --audit-level=high --omit=dev
 
   frontend:
     runs-on: ubuntu-latest
@@ -39,3 +41,15 @@ jobs:
         run: cd apps/web-client && npm ci
       - name: Проверка типов TypeScript
         run: cd apps/web-client && npx tsc --noEmit
+      - name: Прод-сборка Next.js (ловит поломки сборки до деплоя)
+        run: cd apps/web-client && npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001/api/v1
+          NEXT_PUBLIC_SUPPORT_EMAIL: support@example.ru
+      # Информационный (не блокирует): текущие high-advisory — только в Next.js
+      # и его postcss, и закрываются лишь мажорным апгрейдом Next 14→15/16
+      # (breaking, вынесен в отдельный трек). Конфиг приложения (без rewrites,
+      # без Server Actions) делает эти advisory в основном неприменимыми, но
+      # держим их на виду, чтобы не потерять при появлении патча в 14.x.
+      - name: Аудит зависимостей фронтенда (информационно)
+        run: cd apps/web-client && npm audit --audit-level=high || true

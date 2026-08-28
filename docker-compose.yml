@@ -37,7 +37,7 @@ services:
   api-gateway:
     build:
       context: ./services/api-gateway
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: sk_api
     restart: unless-stopped
     ports:
@@ -89,10 +89,19 @@ services:
     depends_on:
       - api-gateway
 
+  # Adminer и Redis Commander — админ-UI для БД/кэша. Вынесены в профиль
+  # `tools`, поэтому обычный `docker compose up -d` (в т.ч. в deploy.sh) их
+  # НЕ поднимает: в проде две панели с историей CVE (у Adminer — SSRF/чтение
+  # файлов) не должны работать постоянно, даже забинженные на 127.0.0.1
+  # (доступны через любой SSH-туннель). Запускать по требованию:
+  #   docker compose --profile tools up -d adminer redis-commander
+  # и гасить после использования:
+  #   docker compose --profile tools stop adminer redis-commander
   adminer:
     image: adminer:4
     container_name: sk_adminer
     restart: unless-stopped
+    profiles: ["tools"]
     ports:
       - "127.0.0.1:8080:8080"
     environment:
@@ -102,6 +111,7 @@ services:
     image: rediscommander/redis-commander:latest
     container_name: sk_redis_ui
     restart: unless-stopped
+    profiles: ["tools"]
     ports:
       - "127.0.0.1:8081:8081"
     environment:
