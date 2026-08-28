@@ -42,7 +42,27 @@ SMTP_FROM=
 ENVEOF
 fi
 
-docker compose up -d --build
+# Своп-страховка перед сборкой. next build и npm ci прожорливы по памяти, а на
+# ПОВТОРНОМ деплое они идут поверх уже работающих контейнеров прошлой версии —
+# на маломощной VM ядро OOM-убивает сборку ("failed to execute bake: signal:
+# killed"). Первый деплой проходил только потому, что контейнеров ещё не было.
+# Заводим 2 ГБ свопа один раз, если его нет (идемпотентно, переживает ребут).
+if [ -z "$(swapon --show)" ]; then
+  echo "Свопа нет — создаю 2G swapfile для запаса памяти на сборку..."
+  fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+# Собираем образы ПОСЛЕДОВАТЕЛЬНО, по одному (COMPOSE_BAKE=false отключает
+# параллельный bake): одновременная сборка обоих Node-образов (npm ci +
+# next build) удваивала пик памяти и выбивала VM. Затем поднимаем стек.
+export COMPOSE_BAKE=false
+docker compose build api-gateway
+docker compose build web-client
+docker compose up -d
 
 echo "Waiting for Postgres..."
 for i in $(seq 1 30); do
