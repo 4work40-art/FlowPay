@@ -16,6 +16,19 @@ const { splitCsvToRows } = require('./registerParse');
 
 const execFileP = promisify(execFile);
 const MAX_OCR_PAGES = 5; // сканы длиннее — распознаём только начало, этого достаточно для шапки документа
+
+// Жёсткий верхний предел на время работы каждого внешнего процесса
+// (pdftotext/pdftoppm/tesseract). maxBuffer ограничивает объём вывода, но не
+// время: PDF с патологической геометрией или зацикленный рендер мог висеть
+// сколько угодно, удерживая дочерний процесс. По таймауту процесс убивается.
+const EXEC_TIMEOUT_MS = 60 * 1000;
+const EXEC_OPTS = { timeout: EXEC_TIMEOUT_MS, killSignal: 'SIGKILL' };
+
+// Верхний предел на число пикселей входного изображения для sharp. По
+// умолчанию sharp допускает ~268 Мпикс; «pixel-flood» картинка (напр.
+// 30000×30000) успела бы аллоцировать гигабайты до ресайза. 100 Мпикс с
+// запасом хватает для легитимных сканов (10000×10000), но обрубает абьюз.
+const SHARP_MAX_PIXELS = 100 * 1000 * 1000;
 const CYR = '[а-яёА-ЯЁa-zA-Z]'; // \w не матчит кириллицу в JS-регулярках — везде используем этот класс вместо \w
 
 async function withTempDir(fn) {
@@ -34,7 +47,7 @@ async function withTempDir(fn) {
 // поднимает точность Tesseract на некачественных сканах/фото без внешних
 // сервисов и GPU.
 async function preprocessForOcr(inputPath, outputPath) {
-  await sharp(inputPath)
+  await sharp(inputPath, { limitInputPixels: SHARP_MAX_PIXELS })
     .rotate()
     .greyscale()
     .normalize()
@@ -51,10 +64,10 @@ async function ocrImageFile(imgPath, dir) {
     // Повреждённый/нестандартный файл изображения — пробуем распознать как есть,
     // не проваливая весь запрос из-за необязательного шага предобработки.
     console.warn('[documentRecognizer] предобработка изображения не удалась:', e.message);
-    const { stdout } = await execFileP('tesseract', [imgPath, 'stdout', '-l', 'rus+eng'], { maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await execFileP('tesseract', [imgPath, 'stdout', '-l', 'rus+eng'], { maxBuffer: 10 * 1024 * 1024, ...EXEC_OPTS });
     return stdout;
   }
-  const { stdout } = await execFileP('tesseract', [prePath, 'stdout', '-l', 'rus+eng'], { maxBuffer: 10 * 1024 * 1024 });
+  const { stdout } = await execFileP('tesseract', [prePath, 'stdout', '-l', 'rus+eng'], { maxBuffer: 10 * 1024 * 1024, ...EXEC_OPTS });
   return stdout;
 }
 
@@ -64,14 +77,14 @@ async function extractPdfText(buffer) {
     await fs.writeFile(pdfPath, buffer);
 
     const { stdout } = await execFileP('pdftotext', ['-layout', pdfPath, '-'], {
-      maxBuffer: 20 * 1024 * 1024,
+      maxBuffer: 20 * 1024 * 1024, ...EXEC_OPTS,
     });
 
     // Текстовый слой есть (счета/платёжки из 1С, банк-клиента) — этого достаточно.
     if (stdout.trim().length >= 40) return stdout;
 
     // Иначе это скан — рендерим первые страницы в изображения и прогоняем OCR.
-    await execFileP('pdftoppm', ['-r', '300', '-png', '-l', String(MAX_OCR_PAGES), pdfPath, path.join(dir, 'page')]);
+    await execFileP('pdftoppm', ['-r', '300', '-png', '-l', String(MAX_OCR_PAGES), pdfPath, path.join(dir, 'page')], EXEC_OPTS);
     const files = (await fs.readdir(dir)).filter(f => f.startsWith('page') && f.endsWith('.png')).sort();
     let text = '';
     for (const f of files) text += (await ocrImageFile(path.join(dir, f), dir)) + '\n';
