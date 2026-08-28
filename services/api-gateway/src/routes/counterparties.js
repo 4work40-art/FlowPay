@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRole } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
 const { isValidOgrn, isValidBik, isValidAccountNumber } = require('../lib/bankRequisites');
@@ -61,6 +61,12 @@ async function findDuplicates(orgId, { inn, name }) {
 }
 
 const router = express.Router();
+
+// Запись в карточки контрагентов доступна только владельцу и бухгалтеру
+// (карта PERMISSIONS в routes/users.js). readonly и vendor_admin — только
+// чтение. Служебное автосоздание контрагента по ИНН при пакетной загрузке
+// счетов (invoices POST /bulk) идёт под теми же ролями записи.
+const canWriteCounterparties = requireRole('owner', 'accountant');
 
 // Автозаполнение реквизитов по ИНН (ЕГРЮЛ/ЕГРИП через DaData).
 // GET /counterparties/suggest?inn=... — до создания записи, поэтому раньше CRUD.
@@ -146,7 +152,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // раньше — пользователь дозаполнит карточку в разделе «Контрагенты», где
 // это поле уже обязательно. Существующие записи без ИНН эта проверка не
 // трогает — миграции на NOT NULL нет и не должно быть.
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, canWriteCounterparties, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type,
     ogrn, bank_account, bank_name, bank_bik, bank_corr_account,
     inn_optional, check_duplicates, confirm_duplicate } = req.body || {};
@@ -283,7 +289,7 @@ router.get('/:id/overdue-risk', authMiddleware, async (req, res) => {
   }
 });
 
-router.patch('/:id', authMiddleware, async (req, res) => {
+router.patch('/:id', authMiddleware, canWriteCounterparties, async (req, res) => {
   const { name, inn, kpp, phone, email, address, type, is_active,
     ogrn, bank_account, bank_name, bank_bik, bank_corr_account } = req.body || {};
   const reqError = validateRequisites({ inn, kpp });

@@ -113,6 +113,23 @@ async function authMiddleware(req, res, next) {
   next();
 }
 
+// Фабрика middleware проверки роли. Ставится ВТОРЫМ, после authMiddleware
+// (который кладёт req.user.role): фильтрует запрос по списку допустимых
+// ролей, иначе 403 FORBIDDEN. Задумана как базовый фильтр записи в
+// финансовые сущности (invoices/payments/counterparties доступны на запись
+// только owner/accountant — см. карту PERMISSIONS в routes/users.js). Более
+// строгие точечные проверки (owner-only в organizations/billing,
+// RESTRICTED_TRANSITION_ROLES на переходах статуса счёта) остаются сверху —
+// этот фильтр их не заменяет и не ослабляет. Код и стиль ошибки те же, что
+// у существующих ролевых проверок (err(res, 403, ..., 'FORBIDDEN')).
+function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (!req.user || !allowedRoles.includes(req.user.role))
+      return err(res, 403, 'Недостаточно прав: действие недоступно для вашей роли', 'FORBIDDEN');
+    return next();
+  };
+}
+
 // Отзыв всех активных сессий пользователя.
 // scope: сейчас единственный — 'password' (смена/сброс пароля, удаление
 // организации). Параметр сохранён явным, чтобы случайная опечатка в имени
@@ -142,5 +159,5 @@ async function tryRevokeAllUserSessions(userId, scope = 'password') {
 
 module.exports = {
   JWT_SECRET, TOKEN_TTL_S, PLATFORM_TOKEN_TYPE, signToken, authMiddleware,
-  revokeAllUserSessions, tryRevokeAllUserSessions,
+  requireRole, revokeAllUserSessions, tryRevokeAllUserSessions,
 };

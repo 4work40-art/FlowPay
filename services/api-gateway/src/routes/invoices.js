@@ -1,9 +1,13 @@
 const express = require('express');
 const { pool } = require('../lib/db');
 const { ok, err, dbErr, fmt } = require('../lib/http');
-const { authMiddleware } = require('../lib/auth');
+const { authMiddleware, requireRole } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { validateRequisites, isValidInn } = require('../lib/inn');
+
+// Запись в счета доступна только владельцу и бухгалтеру (карта PERMISSIONS
+// в routes/users.js). readonly и vendor_admin — только чтение.
+const canWriteInvoices = requireRole('owner', 'accountant');
 const { validateInvoiceCreate, validateBulkInvoiceItem } = require('../lib/invoiceValidation');
 
 const router = express.Router();
@@ -124,7 +128,7 @@ async function insertItems(client, orgId, invoiceId, items) {
   }
 }
 
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, canWriteInvoices, async (req, res) => {
   const { amount_kopecks, number, counterparty_id, due_date, invoice_date, notes, items } = req.body || {};
   const inputError = validateInvoiceCreate(req.body);
   if (inputError) return err(res, 400, inputError, 'VALIDATION_ERROR');
@@ -178,7 +182,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // нормальный сценарий: одна плохая строка не должна ронять весь пакет,
 // поэтому каждый элемент обрабатывается и проваливается независимо
 // (в отличие от одиночного создания, здесь нет общей транзакции на пакет).
-router.post('/bulk', authMiddleware, async (req, res) => {
+router.post('/bulk', authMiddleware, canWriteInvoices, async (req, res) => {
   const { items } = req.body || {};
   if (!Array.isArray(items) || !items.length)
     return err(res, 400, 'Передайте непустой массив items', 'VALIDATION_ERROR');
@@ -317,7 +321,7 @@ const RESTRICTED_TRANSITION_ROLES = ['owner', 'accountant'];
 // причину).
 const REASON_REQUIRED_TRANSITIONS = ['write_off', 'open_dispute'];
 
-router.patch('/:id/state', authMiddleware, async (req, res) => {
+router.patch('/:id/state', authMiddleware, canWriteInvoices, async (req, res) => {
   const { transition, reason } = req.body || {};
 
   if (RESTRICTED_TRANSITIONS.includes(transition) && !RESTRICTED_TRANSITION_ROLES.includes(req.user.role))
@@ -349,7 +353,7 @@ router.patch('/:id/state', authMiddleware, async (req, res) => {
 
 // Включение/отключение публичной ссылки на счёт. Отключённая ссылка
 // возвращает контрагенту 404 — доступ можно отозвать в любой момент.
-router.patch('/:id/public', authMiddleware, async (req, res) => {
+router.patch('/:id/public', authMiddleware, canWriteInvoices, async (req, res) => {
   const { enabled } = req.body || {};
   if (typeof enabled !== 'boolean')
     return err(res, 400, 'Укажите enabled: true|false', 'VALIDATION_ERROR');
@@ -369,7 +373,7 @@ router.patch('/:id/public', authMiddleware, async (req, res) => {
 
 // Добавить позицию к уже созданному счёту — например, забыли внести товар
 // при первичном вводе, или заполняют позиции постепенно.
-router.post('/:id/items', authMiddleware, async (req, res) => {
+router.post('/:id/items', authMiddleware, canWriteInvoices, async (req, res) => {
   const { name, quantity, unit, unit_price_kopecks } = req.body || {};
   const itemsError = validateItems([{ name, quantity, unit, unit_price_kopecks }]);
   if (itemsError) return err(res, 400, itemsError, 'VALIDATION_ERROR');
@@ -390,7 +394,7 @@ router.post('/:id/items', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
+router.delete('/:id/items/:itemId', authMiddleware, canWriteInvoices, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `DELETE FROM invoice_items WHERE id=$1 AND invoice_id=$2 AND org_id=$3 RETURNING id`,
@@ -408,7 +412,7 @@ router.delete('/:id/items/:itemId', authMiddleware, async (req, res) => {
 // вместо создания дубля дозаполняем только те поля, которых сейчас нет
 // (никогда не перезаписываем то, что пользователь уже ввёл или поправил), и
 // добавляем позиции из распознанного файла, если у счёта их ещё нет.
-router.patch('/:id/fill-missing', authMiddleware, async (req, res) => {
+router.patch('/:id/fill-missing', authMiddleware, canWriteInvoices, async (req, res) => {
   const { invoice_date, due_date, notes, items } = req.body || {};
   if (items !== undefined) {
     const itemsError = validateItems(items);
